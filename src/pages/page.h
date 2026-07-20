@@ -5,13 +5,15 @@
 #include <stdbool.h>
 #include <string.h>
 
-#define PAGE_SIZE        4096
+#define PAGE_SIZE        8192
 #define INVALID_PAGE_ID  UINT32_MAX
 
 #define PAGE_TYPE_FREE   0
 #define PAGE_TYPE_DATA   1
 #define PAGE_TYPE_INDEX  2
 #define PAGE_TYPE_META   3
+#define PAGE_TYPE_VECTOR 4
+#define PAGE_TYPE_HNSW   5
 
 typedef uint32_t page_id_t;
 

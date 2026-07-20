@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <stdlib.h>
 
 static int flush_meta(StorageManager *sm) {
     uint8_t buf[PAGE_SIZE];
@@ -241,4 +242,35 @@ int storage_deallocate_page(StorageManager *sm, page_id_t page_id) {
 
 page_id_t storage_num_pages(StorageManager *sm) {
     return sm->meta.page_count;
+}
+
+int storage_read_pages(StorageManager *sm, page_id_t start, uint32_t count, Page *pages) {
+    if (sm->fd < 0 || count == 0)
+        return -1;
+
+    if (start + count > sm->meta.page_count)
+        return -1;
+
+    /* Single pread for the entire contiguous range */
+    size_t total_bytes = (size_t)count * PAGE_SIZE;
+    uint8_t *bulk_buf = malloc(total_bytes);
+    if (!bulk_buf)
+        return -1;
+
+    off_t offset = (off_t)start * PAGE_SIZE;
+    ssize_t n = pread(sm->fd, bulk_buf, total_bytes, offset);
+    if (n != (ssize_t)total_bytes) {
+        free(bulk_buf);
+        return -1;
+    }
+
+    for (uint32_t i = 0; i < count; i++) {
+        memcpy(pages[i].data, bulk_buf + i * PAGE_SIZE, PAGE_SIZE);
+        pages[i].id        = start + i;
+        pages[i].pin_count = 0;
+        pages[i].is_dirty  = false;
+    }
+
+    free(bulk_buf);
+    return 0;
 }
