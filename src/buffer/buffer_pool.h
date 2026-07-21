@@ -4,6 +4,8 @@
 #include "../pages/page.h"
 #include "../pages/storage_mgr.h"
 
+#include <pthread.h>
+
 #define BP_EMPTY_SLOT INVALID_PAGE_ID
 
 typedef struct {
@@ -15,6 +17,7 @@ typedef struct {
   uint32_t clock_hand;
   uint32_t num_frames;
   StorageManager *sm;
+  pthread_mutex_t latch;
 } BufferPool;
 
 int bp_init(BufferPool *bp, StorageManager *sm, uint32_t num_frames);

@@ -34,12 +34,31 @@ typedef struct {
 
 #define SLOT_SIZE sizeof(SlotEntry)
 
+#include <pthread.h>
+
 typedef struct {
-    page_id_t  id;
-    int        pin_count;
-    bool       is_dirty;
-    uint8_t    data[PAGE_SIZE];
+    page_id_t       id;
+    int             pin_count;
+    bool            is_dirty;
+    pthread_rwlock_t rwlatch;
+    uint8_t         data[PAGE_SIZE];
 } Page;
+
+static inline int page_rlock(Page *p) {
+    return pthread_rwlock_rdlock(&p->rwlatch);
+}
+
+static inline int page_runlock(Page *p) {
+    return pthread_rwlock_unlock(&p->rwlatch);
+}
+
+static inline int page_wlock(Page *p) {
+    return pthread_rwlock_wrlock(&p->rwlatch);
+}
+
+static inline int page_wunlock(Page *p) {
+    return pthread_rwlock_unlock(&p->rwlatch);
+}
 
 static inline PageHeader *page_get_header(Page *p) {
     return (PageHeader *)p->data;
