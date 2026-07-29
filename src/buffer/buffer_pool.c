@@ -199,7 +199,7 @@ Page *bp_fetch_page(BufferPool *bp, page_id_t page_id) {
 
 int bp_unpin_page(BufferPool *bp, page_id_t page_id, bool is_dirty) {
   pthread_mutex_lock(&bp->latch);
-  
+
   int32_t frame = pt_lookup(bp, page_id);
   if (frame < 0) {
     pthread_mutex_unlock(&bp->latch);
@@ -257,7 +257,7 @@ int bp_flush_all(BufferPool *bp) {
 
 Page *bp_new_page(BufferPool *bp, page_id_t *out) {
   pthread_mutex_lock(&bp->latch);
-  
+
   page_id_t new_id;
   if (storage_allocate_page(bp->sm, &new_id) < 0) {
     pthread_mutex_unlock(&bp->latch);
