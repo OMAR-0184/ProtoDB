@@ -1,5 +1,5 @@
 #include "flat_index.h"
-#include "vec_page.h"
+#include "../vec_page.h"
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
