@@ -1,9 +1,9 @@
 #ifndef FLAT_INDEX_H
 #define FLAT_INDEX_H
 
-#include "../buffer/buffer_pool.h"
-#include "vec_topk.h"
-#include "vec_utils.h"
+#include "../../buffer/buffer_pool.h"
+#include "../vec_topk.h"
+#include "../vec_utils.h"
 
 typedef enum {
     VEC_DIST_L2,
