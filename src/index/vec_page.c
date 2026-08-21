@@ -16,6 +16,7 @@ void vec_page_init(Page *p, page_id_t id, uint16_t dim) {
     vh->dim         = dim;
     vh->num_vectors = 0;
     vh->_reserved   = 0;
+    memset(vh->deleted_bitmap, 0, sizeof(vh->deleted_bitmap));
 }
 
 uint16_t vec_page_capacity(uint16_t dim) {
@@ -26,7 +27,9 @@ uint16_t vec_page_capacity(uint16_t dim) {
     uint32_t vec_bytes = (uint32_t)dim * (uint32_t)sizeof(float);
     if (vec_bytes > usable)
         return 0;
-    return (uint16_t)(usable / vec_bytes);
+    
+    uint16_t cap = (uint16_t)(usable / vec_bytes);
+    return (cap > 1024) ? 1024 : cap;
 }
 
 int vec_page_append(Page *p, const float *vec) {
@@ -62,4 +65,33 @@ uint16_t vec_page_count(const Page *p) {
 
 uint16_t vec_page_dim(const Page *p) {
     return get_vec_header_const(p)->dim;
+}
+
+int vec_page_delete(Page *p, uint16_t index) {
+    VecPageHeader *vh = get_vec_header(p);
+    if (index >= vh->num_vectors || index >= 1024) {
+        return -1;
+    }
+    
+    uint16_t word_idx = index / 64;
+    uint16_t bit_idx = index % 64;
+    
+    if (vh->deleted_bitmap[word_idx] & (1ULL << bit_idx)) {
+        return -1;
+    }
+    
+    vh->deleted_bitmap[word_idx] |= (1ULL << bit_idx);
+    return 0;
+}
+
+bool vec_page_is_deleted(const Page *p, uint16_t index) {
+    const VecPageHeader *vh = get_vec_header_const(p);
+    if (index >= vh->num_vectors || index >= 1024) {
+        return true; 
+    }
+    
+    uint16_t word_idx = index / 64;
+    uint16_t bit_idx = index % 64;
+    
+    return (vh->deleted_bitmap[word_idx] & (1ULL << bit_idx)) != 0;
 }

@@ -7,6 +7,7 @@ BUILDDIR = build
 # Sources
 PAGE_SRC       = src/pages/page.c
 STORAGE_SRC    = src/pages/storage_mgr.c
+STREAM_SRC     = src/pages/stream_page.c
 BUFFER_SRC     = src/buffer/buffer_pool.c
 VEC_UTILS_SRC  = src/index/vec_utils.c
 VEC_TOPK_SRC   = src/index/vec_topk.c
@@ -14,7 +15,7 @@ VEC_PAGE_SRC   = src/index/vec_page.c
 FLAT_INDEX_SRC = src/index/flat/flat_index.c
 IVF_INDEX_SRC  = src/index/ivf/ivf_index.c
 
-OBJS = $(BUILDDIR)/page.o $(BUILDDIR)/storage_mgr.o $(BUILDDIR)/buffer_pool.o \
+OBJS = $(BUILDDIR)/page.o $(BUILDDIR)/storage_mgr.o $(BUILDDIR)/stream_page.o $(BUILDDIR)/buffer_pool.o \
        $(BUILDDIR)/vec_utils.o $(BUILDDIR)/vec_topk.o $(BUILDDIR)/vec_page.o \
        $(BUILDDIR)/flat_index.o $(BUILDDIR)/ivf_index.o
 
@@ -27,6 +28,10 @@ $(BUILDDIR)/page.o: $(PAGE_SRC) src/pages/page.h
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILDDIR)/storage_mgr.o: $(STORAGE_SRC) src/pages/storage_mgr.h src/pages/page.h
+	@mkdir -p $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/stream_page.o: $(STREAM_SRC) src/pages/stream_page.h src/pages/page.h
 	@mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
@@ -73,7 +78,14 @@ $(BUILDDIR)/test_flat_index: $(TESTDIR)/test_flat_index.c $(OBJS)
 $(BUILDDIR)/test_ivf_index: $(TESTDIR)/test_ivf_index.c $(OBJS)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
 
-test: $(BUILDDIR)/test_pages $(BUILDDIR)/test_storage $(BUILDDIR)/test_storage_bulk $(BUILDDIR)/test_buffer_pool $(BUILDDIR)/test_flat_index $(BUILDDIR)/test_ivf_index
+$(BUILDDIR)/test_persistence: $(TESTDIR)/test_persistence.c $(OBJS)
+	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
+
+TEST_BINS = $(BUILDDIR)/test_pages $(BUILDDIR)/test_storage $(BUILDDIR)/test_storage_bulk \
+            $(BUILDDIR)/test_buffer_pool $(BUILDDIR)/test_flat_index $(BUILDDIR)/test_ivf_index \
+            $(BUILDDIR)/test_persistence
+
+test: $(TEST_BINS)
 	@echo ""
 	@$(BUILDDIR)/test_pages
 	@$(BUILDDIR)/test_storage
@@ -81,6 +93,7 @@ test: $(BUILDDIR)/test_pages $(BUILDDIR)/test_storage $(BUILDDIR)/test_storage_b
 	@$(BUILDDIR)/test_buffer_pool
 	@$(BUILDDIR)/test_flat_index
 	@$(BUILDDIR)/test_ivf_index
+	@$(BUILDDIR)/test_persistence
 
 bench: $(OBJS) bench/bench_main.c
 	@mkdir -p bench/results

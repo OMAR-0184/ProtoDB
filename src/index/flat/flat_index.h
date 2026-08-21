@@ -45,6 +45,12 @@ int flat_index_insert(FlatIndex *idx, const float *vec,
                       page_id_t *out_pid, uint16_t *out_slot);
 
 /*
+ * Delete a vector by marking its tombstone bit.
+ * Returns 0 on success, -1 if not found or already deleted.
+ */
+int flat_index_delete(FlatIndex *idx, page_id_t pid, uint16_t slot);
+
+/*
  * Brute-force k-nearest-neighbor search.
  * Results are written to the caller-provided array (must have room for k entries).
  * *num_results is set to the actual number returned (may be < k if index has fewer vectors).
@@ -56,5 +62,17 @@ int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
 
 /* Number of vectors in the index. */
 uint32_t flat_index_count(const FlatIndex *idx);
+
+/*
+ * Save the FlatIndex metadata and page list to disk via stream pages.
+ * Returns 0 on success and sets *out_pid to the starting stream page ID.
+ */
+int flat_index_save(FlatIndex *idx, page_id_t *out_pid);
+
+/*
+ * Load the FlatIndex from a saved stream page.
+ * Returns 0 on success, -1 on failure.
+ */
+int flat_index_load(FlatIndex *idx, BufferPool *bp, page_id_t pid);
 
 #endif
