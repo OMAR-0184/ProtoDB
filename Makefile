@@ -18,7 +18,7 @@ OBJS = $(BUILDDIR)/page.o $(BUILDDIR)/storage_mgr.o $(BUILDDIR)/buffer_pool.o \
        $(BUILDDIR)/vec_utils.o $(BUILDDIR)/vec_topk.o $(BUILDDIR)/vec_page.o \
        $(BUILDDIR)/flat_index.o $(BUILDDIR)/ivf_index.o
 
-.PHONY: all clean test
+.PHONY: all clean test bench
 
 all: $(OBJS)
 
@@ -81,6 +81,11 @@ test: $(BUILDDIR)/test_pages $(BUILDDIR)/test_storage $(BUILDDIR)/test_storage_b
 	@$(BUILDDIR)/test_buffer_pool
 	@$(BUILDDIR)/test_flat_index
 	@$(BUILDDIR)/test_ivf_index
+
+bench: $(OBJS) bench/bench_main.c
+	@mkdir -p bench/results
+	$(CC) $(CFLAGS) bench/bench_main.c $(OBJS) -o $(BUILDDIR)/bench_protodb $(LDFLAGS)
+	@./$(BUILDDIR)/bench_protodb
 
 clean:
 	rm -rf $(BUILDDIR)

@@ -3,8 +3,10 @@
 #include <stdlib.h>
 
 void page_init(Page *p, page_id_t id, uint8_t page_type) {
-    memset(p, 0, sizeof(Page));
-    p->id = id;
+    memset(p->data, 0, PAGE_SIZE);
+    p->id        = id;
+    p->pin_count = 0;
+    p->is_dirty  = false;
 
     PageHeader *hdr = page_get_header(p);
     hdr->page_id        = id;
@@ -125,25 +127,22 @@ int page_update_record(Page *p, uint16_t slot_index, const void *data, uint16_t 
         return 0;
     }
 
+    /* Verify the new data will fit even after reclaiming old record's space */
     uint16_t old_len = s->length;
+    if (page_free_space(p) + old_len < len)
+        return -1;
+
+    /* Tombstone old record to reclaim space */
     s->offset = 0;
     s->length = 0;
 
-    uint16_t needed = len;
-    if (page_free_space(p) < needed) {
+    if (page_free_space(p) < len)
         page_compact(p);
-        if (page_free_space(p) < needed) {
-            s->offset = 0;
-            s->length = 0;
-            return -1;
-        }
-    }
 
     hdr->free_space_end -= len;
     memcpy(p->data + hdr->free_space_end, data, len);
     s->offset = hdr->free_space_end;
     s->length = len;
 
-    (void)old_len;
     return 0;
 }

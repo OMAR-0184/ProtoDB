@@ -260,3 +260,12 @@ void vec_normalize(float *v, uint32_t dim) {
         v[i] *= inv;
 #endif
 }
+
+vec_dist_fn_t vec_get_distance_fn(VecDistanceMetric metric) {
+    switch (metric) {
+        case VEC_DIST_L2:             return vec_l2_distance_sq;
+        case VEC_DIST_COSINE:         return vec_cosine_distance;
+        case VEC_DIST_INNER_PRODUCT:  return vec_inner_product_distance;
+        default:                      return vec_l2_distance_sq;
+    }
+}

@@ -30,4 +30,19 @@ float vec_inner_product_distance(const float *a, const float *b, uint32_t dim);
 /* In-place L2 normalization. */
 void vec_normalize(float *v, uint32_t dim);
 
+/*
+ * Distance metric selection.
+ * Used by all index types to dispatch to the correct distance function.
+ */
+typedef enum {
+    VEC_DIST_L2,
+    VEC_DIST_COSINE,
+    VEC_DIST_INNER_PRODUCT
+} VecDistanceMetric;
+
+typedef float (*vec_dist_fn_t)(const float *, const float *, uint32_t);
+
+/* Returns the distance function for the given metric. */
+vec_dist_fn_t vec_get_distance_fn(VecDistanceMetric metric);
+
 #endif

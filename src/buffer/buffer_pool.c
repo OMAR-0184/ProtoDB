@@ -130,15 +130,17 @@ void bp_destroy(BufferPool *bp) {
     }
   }
 
+  if (bp->frames) {
+    for (uint32_t i = 0; i < bp->num_frames; i++) {
+      pthread_rwlock_destroy(&bp->frames[i].rwlatch);
+    }
+  }
+  pthread_mutex_destroy(&bp->latch);
+
   free(bp->frames);
   free(bp->ref_bits);
   free(bp->pt_keys);
   free(bp->pt_vals);
-
-  for (uint32_t i = 0; i < bp->num_frames; i++) {
-    pthread_rwlock_destroy(&bp->frames[i].rwlatch);
-  }
-  pthread_mutex_destroy(&bp->latch);
 
   memset(bp, 0, sizeof(BufferPool));
 }
