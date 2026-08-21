@@ -5,12 +5,6 @@
 #include "../vec_topk.h"
 #include "../vec_utils.h"
 
-typedef enum {
-    VEC_DIST_L2,
-    VEC_DIST_COSINE,
-    VEC_DIST_INNER_PRODUCT
-} VecDistanceMetric;
-
 /*
  * Flat (brute-force) vector index.
  *

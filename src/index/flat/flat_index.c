@@ -6,18 +6,6 @@
 
 #define INITIAL_PAGE_CAP 16
 
-/* ---- distance function dispatch ---- */
-
-typedef float (*dist_fn_t)(const float *, const float *, uint32_t);
-
-static dist_fn_t get_distance_fn(VecDistanceMetric metric) {
-    switch (metric) {
-        case VEC_DIST_L2:             return vec_l2_distance_sq;
-        case VEC_DIST_COSINE:         return vec_cosine_distance;
-        case VEC_DIST_INNER_PRODUCT:  return vec_inner_product_distance;
-        default:                      return vec_l2_distance_sq;
-    }
-}
 
 /* ---- internal helpers ---- */
 
@@ -146,7 +134,7 @@ int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
         return 0;
     }
 
-    dist_fn_t dist_fn = get_distance_fn(idx->metric);
+    vec_dist_fn_t dist_fn = vec_get_distance_fn(idx->metric);
 
     VecTopK topk;
     if (vec_topk_init(&topk, k) < 0)

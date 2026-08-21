@@ -23,8 +23,10 @@ uint16_t vec_page_capacity(uint16_t dim) {
         return 0;
 
     uint16_t usable = PAGE_SIZE - VEC_DATA_OFFSET;
-    uint16_t vec_bytes = dim * (uint16_t)sizeof(float);
-    return usable / vec_bytes;
+    uint32_t vec_bytes = (uint32_t)dim * (uint32_t)sizeof(float);
+    if (vec_bytes > usable)
+        return 0;
+    return (uint16_t)(usable / vec_bytes);
 }
 
 int vec_page_append(Page *p, const float *vec) {
@@ -34,8 +36,8 @@ int vec_page_append(Page *p, const float *vec) {
     if (vh->num_vectors >= cap)
         return -1;
 
-    uint16_t vec_bytes = vh->dim * (uint16_t)sizeof(float);
-    uint16_t offset = VEC_DATA_OFFSET + vh->num_vectors * vec_bytes;
+    uint32_t vec_bytes = (uint32_t)vh->dim * (uint32_t)sizeof(float);
+    uint32_t offset = VEC_DATA_OFFSET + (uint32_t)vh->num_vectors * vec_bytes;
 
     memcpy(p->data + offset, vec, vec_bytes);
     vh->num_vectors++;
@@ -48,8 +50,8 @@ const float *vec_page_get(const Page *p, uint16_t index) {
     if (index >= vh->num_vectors)
         return NULL;
 
-    uint16_t vec_bytes = vh->dim * (uint16_t)sizeof(float);
-    uint16_t offset = VEC_DATA_OFFSET + index * vec_bytes;
+    uint32_t vec_bytes = (uint32_t)vh->dim * (uint32_t)sizeof(float);
+    uint32_t offset = VEC_DATA_OFFSET + (uint32_t)index * vec_bytes;
 
     return (const float *)(p->data + offset);
 }

@@ -1,0 +1,48 @@
+╔═══════════════════════════════════════════════════════╗
+║             ProtoDB Benchmark Suite                   ║
+╚═══════════════════════════════════════════════════════╝
+  Timestamp:  2026-08-21 20:49:48
+  Page size:  8192 bytes
+  SIMD:       ARM NEON
+
+[1] Page Insert / Get / Delete
+─────────────────────────────────────────────────────────
+  Insert: 2270000 total records in 190.05 ms  (11944162 ops/sec)
+  Get:    2270000 total lookups in 5.02 ms  (451921163 ops/sec)
+  Delete+Compact: 10000 cycles in 299.42 ms  (33398 cycles/sec)
+
+[2] Storage I/O (read / write pages)
+─────────────────────────────────────────────────────────
+  Write: 1000 pages (7.8 MB) in 2.25 ms  (3472.2 MB/s)
+  Read:  1000 pages (7.8 MB) in 1.40 ms  (5572.4 MB/s)
+  Bulk:  1000 pages (7.8 MB) in 4.19 ms  (1865.4 MB/s)
+
+[3] Buffer Pool (fetch / unpin cycles)
+─────────────────────────────────────────────────────────
+  Pool=64 frames, 256 pages, 10 iterations
+  Fetch+Unpin: 2560 ops in 2.93 ms  (874616 ops/sec)
+  Cache ratio: 64/256 (25% capacity)
+
+[4] Flat Index (brute-force vector search)
+─────────────────────────────────────────────────────────
+  dim=128, n=5000
+  Insert: 4.60 ms  (1087903 vectors/sec)
+  Search (k=10): 100 queries in 68.34 ms  (0.7 ms/query, 1463 QPS)
+
+[5] IVF Index (approximate vector search)
+─────────────────────────────────────────────────────────
+  dim=128, n=5000, nlist=32, nprobe=4
+  Train: 124.73 ms
+  Insert: 11.62 ms  (430182 vectors/sec)
+  Search (k=10): 100 queries in 4.22 ms  (0.0 ms/query, 23714 QPS)
+  Speedup context: nprobe=4 / nlist=32 → scans ~12% of data
+
+[6] Distance Functions (SIMD micro-benchmark)
+─────────────────────────────────────────────────────────
+  dim=128, 100000 iterations
+  L2²:     2.69 ms  (37 Mops/sec)
+  Cosine:  3.71 ms  (27 Mops/sec)
+  IP:      2.38 ms  (42 Mops/sec)
+
+─────────────────────────────────────────────────────────
+Results saved to: bench/results/2026-08-21_20-49-48.txt

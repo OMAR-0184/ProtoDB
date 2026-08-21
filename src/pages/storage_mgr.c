@@ -175,7 +175,9 @@ int storage_allocate_page(StorageManager *sm, page_id_t *out) {
             .page_type      = PAGE_TYPE_FREE,
         };
         memcpy(buf, &ph, sizeof(PageHeader));
-        pwrite(sm->fd, buf, PAGE_SIZE, offset);
+        n = pwrite(sm->fd, buf, PAGE_SIZE, offset);
+        if (n != PAGE_SIZE)
+            return -1;
 
         if (flush_meta(sm) < 0)
             return -1;
@@ -201,7 +203,9 @@ int storage_allocate_page(StorageManager *sm, page_id_t *out) {
         .page_type      = PAGE_TYPE_FREE,
     };
     memcpy(buf, &ph, sizeof(PageHeader));
-    pwrite(sm->fd, buf, PAGE_SIZE, (off_t)new_id * PAGE_SIZE);
+    ssize_t n = pwrite(sm->fd, buf, PAGE_SIZE, (off_t)new_id * PAGE_SIZE);
+    if (n != PAGE_SIZE)
+        return -1;
 
     sm->meta.page_count = new_id + 1;
 
@@ -248,7 +252,7 @@ int storage_read_pages(StorageManager *sm, page_id_t start, uint32_t count, Page
     if (sm->fd < 0 || count == 0)
         return -1;
 
-    if (start + count > sm->meta.page_count)
+    if (start >= sm->meta.page_count || count > sm->meta.page_count - start)
         return -1;
 
     /* Single pread for the entire contiguous range */

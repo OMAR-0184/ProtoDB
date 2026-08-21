@@ -7,18 +7,6 @@
 #include <math.h>
 #include <float.h>
 
-/* ---- distance function dispatch ---- */
-
-typedef float (*dist_fn_t)(const float *, const float *, uint32_t);
-
-static dist_fn_t get_distance_fn(VecDistanceMetric metric) {
-    switch (metric) {
-        case VEC_DIST_L2:             return vec_l2_distance_sq;
-        case VEC_DIST_COSINE:         return vec_cosine_distance;
-        case VEC_DIST_INNER_PRODUCT:  return vec_inner_product_distance;
-        default:                      return vec_l2_distance_sq;
-    }
-}
 
 /* ---- k-means helpers ---- */
 
@@ -51,7 +39,7 @@ static void kmeans_init_random(const float *vecs, uint32_t n,
 
 static uint32_t find_nearest_centroid(const float *vec, const float *centroids,
                                       uint32_t nlist, uint16_t dim,
-                                      dist_fn_t dist_fn) {
+                                      vec_dist_fn_t dist_fn) {
     uint32_t best = 0;
     float best_dist = dist_fn(vec, centroids, dim);
 
@@ -68,7 +56,7 @@ static uint32_t find_nearest_centroid(const float *vec, const float *centroids,
 /* Lloyd's algorithm.  Caller seeds the PRNG. */
 static int kmeans_train(const float *train_vecs, uint32_t n,
                         float *centroids, uint32_t k, uint16_t dim,
-                        dist_fn_t dist_fn) {
+                        vec_dist_fn_t dist_fn) {
     if (k == 0 || n == 0 || dim == 0)
         return -1;
 
@@ -173,7 +161,7 @@ int ivf_index_train(IvfIndex *idx, const float *train_vecs, uint32_t n) {
     if (n < idx->nlist)
         return -1;
 
-    dist_fn_t dist_fn = get_distance_fn(idx->metric);
+    vec_dist_fn_t dist_fn = vec_get_distance_fn(idx->metric);
 
     idx->centroids = malloc((size_t)idx->nlist * idx->dim * sizeof(float));
     if (!idx->centroids)
@@ -216,7 +204,7 @@ int ivf_index_insert(IvfIndex *idx, const float *vec,
     if (!idx->is_trained)
         return -1;
 
-    dist_fn_t dist_fn = get_distance_fn(idx->metric);
+    vec_dist_fn_t dist_fn = vec_get_distance_fn(idx->metric);
     uint32_t c = find_nearest_centroid(vec, idx->centroids,
                                        idx->nlist, idx->dim, dist_fn);
 
@@ -237,7 +225,7 @@ int ivf_index_search(IvfIndex *idx, const float *query, uint32_t k,
         return 0;
     }
 
-    dist_fn_t dist_fn = get_distance_fn(idx->metric);
+    vec_dist_fn_t dist_fn = vec_get_distance_fn(idx->metric);
     uint32_t nprobe = idx->nprobe;
 
     /* Find the nprobe nearest centroids */
