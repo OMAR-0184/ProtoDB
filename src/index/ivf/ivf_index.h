@@ -53,6 +53,12 @@ int ivf_index_train(IvfIndex *idx, const float *train_vecs, uint32_t n);
 int ivf_index_insert(IvfIndex *idx, const float *vec,
                      page_id_t *out_pid, uint16_t *out_slot);
 
+/*
+ * Delete a vector by marking its tombstone bit.
+ * Returns 0 on success, -1 if not found or already deleted.
+ */
+int ivf_index_delete(IvfIndex *idx, page_id_t pid, uint16_t slot);
+
 /* Approximate kNN — probes nprobe partitions, merges results.
  * Results sorted ascending by distance.
  * Returns 0 on success, -1 on failure or if untrained. */
@@ -61,5 +67,17 @@ int ivf_index_search(IvfIndex *idx, const float *query, uint32_t k,
 
 uint32_t ivf_index_count(const IvfIndex *idx);
 bool ivf_index_is_trained(const IvfIndex *idx);
+
+/*
+ * Save the IvfIndex metadata, centroids, and partitions to disk.
+ * Returns 0 on success and sets *out_pid to the starting stream page ID.
+ */
+int ivf_index_save(IvfIndex *idx, page_id_t *out_pid);
+
+/*
+ * Load the IvfIndex from a saved stream page.
+ * Returns 0 on success, -1 on failure.
+ */
+int ivf_index_load(IvfIndex *idx, BufferPool *bp, page_id_t pid);
 
 #endif

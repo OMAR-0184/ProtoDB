@@ -326,6 +326,48 @@ static void test_flat_inner_product(void) {
     printf("  PASS: test_flat_inner_product\n");
 }
 
+static void test_flat_delete(void) {
+    TestEnv env;
+    env_setup(&env, 4, VEC_DIST_L2);
+
+    float v1[4] = {1.0, 1.0, 1.0, 1.0};
+    float v2[4] = {2.0, 2.0, 2.0, 2.0};
+    float v3[4] = {3.0, 3.0, 3.0, 3.0};
+
+    page_id_t p1, p2, p3;
+    uint16_t s1, s2, s3;
+    assert(flat_index_insert(&env.idx, v1, &p1, &s1) == 0);
+    assert(flat_index_insert(&env.idx, v2, &p2, &s2) == 0);
+    assert(flat_index_insert(&env.idx, v3, &p3, &s3) == 0);
+
+    assert(flat_index_count(&env.idx) == 3);
+
+    /* Search before deletion */
+    float q[4] = {2.1, 2.1, 2.1, 2.1};
+    VecResult res[3];
+    uint32_t n;
+    assert(flat_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(n == 3);
+    assert(res[0].page_id == p2 && res[0].slot_index == s2); /* closest */
+
+    /* Delete v2 */
+    assert(flat_index_delete(&env.idx, p2, s2) == 0);
+    assert(flat_index_count(&env.idx) == 2);
+
+    /* Double delete fails */
+    assert(flat_index_delete(&env.idx, p2, s2) < 0);
+
+    /* Search after deletion */
+    assert(flat_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(n == 2);
+    /* Now v3 or v1 should be returned, but v2 is gone */
+    assert((res[0].page_id != p2) || (res[0].slot_index != s2));
+    assert((res[1].page_id != p2) || (res[1].slot_index != s2));
+
+    env_teardown(&env);
+    printf("  PASS: test_flat_delete\n");
+}
+
 /* ============================================================
  *  Main
  * ============================================================ */
@@ -346,6 +388,7 @@ int main(void) {
     test_flat_multipage();
     test_flat_cosine_metric();
     test_flat_inner_product();
+    test_flat_delete();
 
     printf("All flat vector index tests passed.\n\n");
     return 0;

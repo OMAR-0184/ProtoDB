@@ -468,6 +468,53 @@ static void test_ivf_k_exceeds_total(void) {
     printf("  PASS: test_ivf_k_exceeds_total\n");
 }
 
+static void test_ivf_delete(void) {
+    IvfTestEnv env;
+    ivf_env_setup(&env, 4, VEC_DIST_L2, 2, 2, 32); /* nlist=2, nprobe=2, frames=32 */
+
+    /* train */
+    float train[8] = {
+        1, 1, 1, 1,
+        2, 2, 2, 2
+    };
+    assert(ivf_index_train(&env.idx, train, 2) == 0);
+
+    /* insert */
+    float v1[4] = {1.0, 1.0, 1.0, 1.0};
+    float v2[4] = {2.0, 2.0, 2.0, 2.0};
+    float v3[4] = {3.0, 3.0, 3.0, 3.0};
+    page_id_t p1, p2, p3;
+    uint16_t s1, s2, s3;
+    
+    assert(ivf_index_insert(&env.idx, v1, &p1, &s1) == 0);
+    assert(ivf_index_insert(&env.idx, v2, &p2, &s2) == 0);
+    assert(ivf_index_insert(&env.idx, v3, &p3, &s3) == 0);
+
+    assert(ivf_index_count(&env.idx) == 3);
+
+    /* search before deletion */
+    float q[4] = {2.1, 2.1, 2.1, 2.1};
+    VecResult res[3];
+    uint32_t n;
+    assert(ivf_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(n == 3);
+    assert(res[0].page_id == p2 && res[0].slot_index == s2);
+
+    /* delete v2 */
+    assert(ivf_index_delete(&env.idx, p2, s2) == 0);
+    assert(ivf_index_count(&env.idx) == 2);
+    assert(ivf_index_delete(&env.idx, p2, s2) < 0);
+
+    /* search after deletion */
+    assert(ivf_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(n == 2);
+    assert((res[0].page_id != p2) || (res[0].slot_index != s2));
+    assert((res[1].page_id != p2) || (res[1].slot_index != s2));
+
+    ivf_env_teardown(&env);
+    printf("  PASS: test_ivf_delete\n");
+}
+
 /* ============================================================
  *  Main
  * ============================================================ */
@@ -484,6 +531,7 @@ int main(void) {
     test_ivf_inner_product();
     test_ivf_multipage();
     test_ivf_k_exceeds_total();
+    test_ivf_delete();
 
     printf("All IVF vector index tests passed.\n\n");
     return 0;

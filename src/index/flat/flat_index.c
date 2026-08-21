@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include "../../pages/stream_page.h"
 
 #define INITIAL_PAGE_CAP 16
 
@@ -127,6 +128,29 @@ int flat_index_insert(FlatIndex *idx, const float *vec,
     return 0;
 }
 
+int flat_index_delete(FlatIndex *idx, page_id_t pid, uint16_t slot) {
+    /* Verify pid is part of this index */
+    bool found = false;
+    for (uint32_t i = 0; i < idx->num_pages; i++) {
+        if (idx->page_ids[i] == pid) {
+            found = true;
+            break;
+        }
+    }
+    if (!found) return -1;
+
+    Page *p = bp_fetch_page(idx->bp, pid);
+    if (!p) return -1;
+
+    int rc = vec_page_delete(p, slot);
+    if (rc == 0) {
+        idx->total_vectors--;
+    }
+    /* Unpin with dirty flag if successful, clean otherwise */
+    bp_unpin_page(idx->bp, pid, (rc == 0));
+    return rc;
+}
+
 int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
                       VecResult *results, uint32_t *num_results) {
     if (k == 0) {
@@ -151,6 +175,9 @@ int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
 
         uint16_t count = vec_page_count(p);
         for (uint16_t vi = 0; vi < count; vi++) {
+            if (vec_page_is_deleted(p, vi)) {
+                continue;
+            }
             const float *vec = vec_page_get(p, vi);
             float dist = dist_fn(query, vec, idx->dim);
             vec_topk_push(&topk, pid, vi, dist);
@@ -172,4 +199,75 @@ int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
 
 uint32_t flat_index_count(const FlatIndex *idx) {
     return idx->total_vectors;
+}
+
+typedef struct {
+    uint16_t dim;
+    uint32_t metric;
+    uint32_t num_pages;
+    uint32_t total_vectors;
+} FlatIndexMeta;
+
+int flat_index_save(FlatIndex *idx, page_id_t *out_pid) {
+    size_t meta_size = sizeof(FlatIndexMeta);
+    size_t array_size = idx->num_pages * sizeof(page_id_t);
+    size_t total_size = meta_size + array_size;
+
+    uint8_t *buf = malloc(total_size);
+    if (!buf) return -1;
+
+    FlatIndexMeta *meta = (FlatIndexMeta *)buf;
+    meta->dim = idx->dim;
+    meta->metric = (uint32_t)idx->metric;
+    meta->num_pages = idx->num_pages;
+    meta->total_vectors = idx->total_vectors;
+
+    memcpy(buf + meta_size, idx->page_ids, array_size);
+
+    int rc = stream_write(idx->bp, buf, total_size, out_pid);
+    free(buf);
+    return rc;
+}
+
+int flat_index_load(FlatIndex *idx, BufferPool *bp, page_id_t pid) {
+    /* Read first page to get total size? Wait, stream_read needs expected size.
+       We don't know the size until we read FlatIndexMeta.
+       Let's read just the meta first. */
+    FlatIndexMeta meta;
+    if (stream_read(bp, pid, &meta, sizeof(FlatIndexMeta)) < 0) {
+        printf("flat_index_load: failed to read meta from pid %u\n", pid);
+        return -1;
+    }
+    printf("flat_index_load: read meta: dim=%u metric=%u num_pages=%u vectors=%u\n", meta.dim, meta.metric, meta.num_pages, meta.total_vectors);
+
+    size_t total_size = sizeof(FlatIndexMeta) + meta.num_pages * sizeof(page_id_t);
+    uint8_t *buf = malloc(total_size);
+    if (!buf) {
+        printf("flat_index_load: failed to malloc %zu bytes\n", total_size);
+        return -1;
+    }
+
+    if (stream_read(bp, pid, buf, total_size) < 0) {
+        printf("flat_index_load: failed to read %zu bytes\n", total_size);
+        free(buf);
+        return -1;
+    }
+
+    memset(idx, 0, sizeof(FlatIndex));
+    idx->bp = bp;
+    idx->dim = meta.dim;
+    idx->metric = (VecDistanceMetric)meta.metric;
+    idx->num_pages = meta.num_pages;
+    idx->page_cap = meta.num_pages > INITIAL_PAGE_CAP ? meta.num_pages : INITIAL_PAGE_CAP;
+    idx->total_vectors = meta.total_vectors;
+
+    idx->page_ids = malloc(idx->page_cap * sizeof(page_id_t));
+    if (!idx->page_ids) {
+        free(buf);
+        return -1;
+    }
+
+    memcpy(idx->page_ids, buf + sizeof(FlatIndexMeta), meta.num_pages * sizeof(page_id_t));
+    free(buf);
+    return 0;
 }

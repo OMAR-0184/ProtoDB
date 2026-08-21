@@ -17,13 +17,16 @@
  */
 
 typedef struct {
-    uint16_t dim;           /* vector dimensionality */
-    uint16_t num_vectors;   /* number of vectors currently stored */
-    uint32_t _reserved;
+  uint16_t dim;         /* vector dimensionality */
+  uint16_t num_vectors; /* number of vectors currently stored */
+  uint32_t _reserved;
+  uint64_t
+      deleted_bitmap[16]; /* 128 bytes = 1024 bits for deletion tombstones */
 } VecPageHeader;
 
-#define VEC_PAGE_HEADER_OFFSET  PAGE_DATA_OFFSET
-#define VEC_DATA_OFFSET         (VEC_PAGE_HEADER_OFFSET + (uint16_t)sizeof(VecPageHeader))
+#define VEC_PAGE_HEADER_OFFSET PAGE_DATA_OFFSET
+#define VEC_DATA_OFFSET                                                        \
+  (VEC_PAGE_HEADER_OFFSET + (uint16_t)sizeof(VecPageHeader))
 
 /* Initialize a page as a vector page with the given dimension. */
 void vec_page_init(Page *p, page_id_t id, uint16_t dim);
@@ -41,8 +44,15 @@ int vec_page_append(Page *p, const float *vec);
  */
 const float *vec_page_get(const Page *p, uint16_t index);
 
-/* Number of vectors currently stored on this page. */
+/* Number of vectors currently stored on this page (including deleted). */
 uint16_t vec_page_count(const Page *p);
+
+/* Mark the vector at the given index as deleted. Returns 0 on success, -1 on
+ * bounds/already deleted. */
+int vec_page_delete(Page *p, uint16_t index);
+
+/* Check if the vector at the given index is deleted. */
+bool vec_page_is_deleted(const Page *p, uint16_t index);
 
 /* Dimension of vectors on this page. */
 uint16_t vec_page_dim(const Page *p);

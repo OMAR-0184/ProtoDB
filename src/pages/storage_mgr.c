@@ -76,6 +76,8 @@ int storage_open(StorageManager *sm, const char *path) {
         sm->meta.schema_version = SCHEMA_VERSION;
         sm->meta.page_count     = 1;
         sm->meta.free_list_head = INVALID_PAGE_ID;
+        sm->meta.root_index_pid = INVALID_PAGE_ID;
+        sm->meta.root_index_type= 0;
 
         if (ftruncate(fd, PAGE_SIZE) < 0) {
             perror("storage_open: ftruncate");

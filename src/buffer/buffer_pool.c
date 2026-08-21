@@ -296,6 +296,7 @@ Page *bp_new_page(BufferPool *bp, page_id_t *out) {
 
   Page *p = &bp->frames[victim];
   page_init(p, new_id, PAGE_TYPE_DATA);
+  p->id = new_id;
   p->pin_count = 1;
   p->is_dirty = true;
   bp->ref_bits[victim] = true;

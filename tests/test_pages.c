@@ -13,9 +13,6 @@ static void test_init(void) {
     assert(h->page_type == PAGE_TYPE_DATA);
     assert(h->num_slots == 0);
     assert(h->free_space_end == PAGE_SIZE);
-    assert(p.id == 1);
-    assert(p.pin_count == 0);
-    assert(p.is_dirty == false);
     printf("  PASS: test_init\n");
 }
 

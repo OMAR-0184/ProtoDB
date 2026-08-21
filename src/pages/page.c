@@ -4,9 +4,6 @@
 
 void page_init(Page *p, page_id_t id, uint8_t page_type) {
     memset(p->data, 0, PAGE_SIZE);
-    p->id        = id;
-    p->pin_count = 0;
-    p->is_dirty  = false;
 
     PageHeader *hdr = page_get_header(p);
     hdr->page_id        = id;
