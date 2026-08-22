@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define VECTOR_MAX_DIM 1024
+#define VECTOR_MAX_DIM 2000
 
 /*
  * Squared Euclidean (L2²) distance.
