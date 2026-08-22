@@ -21,6 +21,20 @@ int stream_write(BufferPool *bp, const void *data, size_t size, page_id_t *out_s
         page_id_t new_pid;
         Page *p = bp_new_page(bp, &new_pid);
         if (!p) {
+            /* Rollback: delete all successfully allocated pages so far */
+            page_id_t curr = first_pid;
+            while (curr != INVALID_PAGE_ID) {
+                Page *cp = bp_fetch_page(bp, curr);
+                if (cp) {
+                    StreamPageHeader *chdr = get_stream_header(cp);
+                    page_id_t nxt = chdr->next_page_id;
+                    bp_unpin_page(bp, curr, false);
+                    bp_delete_page(bp, curr);
+                    curr = nxt;
+                } else {
+                    break;
+                }
+            }
             return -1;
         }
 
