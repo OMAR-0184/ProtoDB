@@ -310,7 +310,7 @@ static void bench_flat_index(void) {
 
     BENCH_START();
     for (uint32_t q = 0; q < n_queries; q++)
-        flat_index_search(&idx, queries + (size_t)q * dim, k, results, &num);
+        flat_index_search(&idx, queries + (size_t)q * dim, k, NULL, NULL, results, &num);
     BENCH_END();
     double search_ms = BENCH_MS();
     emit("  Search (k=%u): %u queries in %.2f ms  (%.1f ms/query, %.0f QPS)\n",
@@ -378,7 +378,7 @@ static void bench_ivf_index(void) {
 
     BENCH_START();
     for (uint32_t q = 0; q < n_queries; q++)
-        ivf_index_search(&idx, queries + (size_t)q * dim, k, results, &num);
+        ivf_index_search(&idx, queries + (size_t)q * dim, k, NULL, NULL, results, &num);
     BENCH_END();
     double search_ms = BENCH_MS();
     emit("  Search (k=%u): %u queries in %.2f ms  (%.1f ms/query, %.0f QPS)\n",

@@ -45,4 +45,9 @@ typedef float (*vec_dist_fn_t)(const float *, const float *, uint32_t);
 /* Returns the distance function for the given metric. */
 vec_dist_fn_t vec_get_distance_fn(VecDistanceMetric metric);
 
+#include <stdbool.h>
+#include "../pages/page.h"
+/* Function pointer for filtering vectors during search */
+typedef bool (*vec_filter_fn_t)(page_id_t pid, uint16_t slot, void *user_data);
+
 #endif

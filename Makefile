@@ -14,10 +14,11 @@ VEC_TOPK_SRC   = src/index/vec_topk.c
 VEC_PAGE_SRC   = src/index/vec_page.c
 FLAT_INDEX_SRC = src/index/flat/flat_index.c
 IVF_INDEX_SRC  = src/index/ivf/ivf_index.c
+META_STORE_SRC = src/metadata/metadata_store.c
 
 OBJS = $(BUILDDIR)/page.o $(BUILDDIR)/storage_mgr.o $(BUILDDIR)/stream_page.o $(BUILDDIR)/buffer_pool.o \
        $(BUILDDIR)/vec_utils.o $(BUILDDIR)/vec_topk.o $(BUILDDIR)/vec_page.o \
-       $(BUILDDIR)/flat_index.o $(BUILDDIR)/ivf_index.o
+       $(BUILDDIR)/flat_index.o $(BUILDDIR)/ivf_index.o $(BUILDDIR)/metadata_store.o
 
 .PHONY: all clean test bench
 
@@ -59,6 +60,10 @@ $(BUILDDIR)/ivf_index.o: $(IVF_INDEX_SRC) src/index/ivf/ivf_index.h src/index/fl
 	@mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILDDIR)/metadata_store.o: $(META_STORE_SRC) src/metadata/metadata_store.h src/pages/page.h src/buffer/buffer_pool.h
+	@mkdir -p $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 # Tests
 $(BUILDDIR)/test_pages: $(TESTDIR)/test_pages.c $(OBJS)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
@@ -81,9 +86,12 @@ $(BUILDDIR)/test_ivf_index: $(TESTDIR)/test_ivf_index.c $(OBJS)
 $(BUILDDIR)/test_persistence: $(TESTDIR)/test_persistence.c $(OBJS)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
 
+$(BUILDDIR)/test_metadata: $(TESTDIR)/test_metadata.c $(OBJS)
+	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
+
 TEST_BINS = $(BUILDDIR)/test_pages $(BUILDDIR)/test_storage $(BUILDDIR)/test_storage_bulk \
             $(BUILDDIR)/test_buffer_pool $(BUILDDIR)/test_flat_index $(BUILDDIR)/test_ivf_index \
-            $(BUILDDIR)/test_persistence
+            $(BUILDDIR)/test_persistence $(BUILDDIR)/test_metadata
 
 test: $(TEST_BINS)
 	@echo ""
@@ -94,6 +102,7 @@ test: $(TEST_BINS)
 	@$(BUILDDIR)/test_flat_index
 	@$(BUILDDIR)/test_ivf_index
 	@$(BUILDDIR)/test_persistence
+	@$(BUILDDIR)/test_metadata
 
 bench: $(OBJS) bench/bench_main.c
 	@mkdir -p bench/results

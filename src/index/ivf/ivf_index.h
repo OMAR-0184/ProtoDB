@@ -63,6 +63,7 @@ int ivf_index_delete(IvfIndex *idx, page_id_t pid, uint16_t slot);
  * Results sorted ascending by distance.
  * Returns 0 on success, -1 on failure or if untrained. */
 int ivf_index_search(IvfIndex *idx, const float *query, uint32_t k,
+                     vec_filter_fn_t filter_fn, void *filter_arg,
                      VecResult *results, uint32_t *num_results);
 
 uint32_t ivf_index_count(const IvfIndex *idx);
