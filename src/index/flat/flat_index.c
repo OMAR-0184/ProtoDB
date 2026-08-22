@@ -235,20 +235,16 @@ int flat_index_load(FlatIndex *idx, BufferPool *bp, page_id_t pid) {
        Let's read just the meta first. */
     FlatIndexMeta meta;
     if (stream_read(bp, pid, &meta, sizeof(FlatIndexMeta)) < 0) {
-        printf("flat_index_load: failed to read meta from pid %u\n", pid);
         return -1;
     }
-    printf("flat_index_load: read meta: dim=%u metric=%u num_pages=%u vectors=%u\n", meta.dim, meta.metric, meta.num_pages, meta.total_vectors);
 
     size_t total_size = sizeof(FlatIndexMeta) + meta.num_pages * sizeof(page_id_t);
     uint8_t *buf = malloc(total_size);
     if (!buf) {
-        printf("flat_index_load: failed to malloc %zu bytes\n", total_size);
         return -1;
     }
 
     if (stream_read(bp, pid, buf, total_size) < 0) {
-        printf("flat_index_load: failed to read %zu bytes\n", total_size);
         free(buf);
         return -1;
     }

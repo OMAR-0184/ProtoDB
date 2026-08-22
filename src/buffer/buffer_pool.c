@@ -103,7 +103,11 @@ int bp_init(BufferPool *bp, StorageManager *sm, uint32_t num_frames) {
   bp->pt_vals = malloc(cap * sizeof(int32_t));
 
   if (!bp->frames || !bp->ref_bits || !bp->pt_keys || !bp->pt_vals) {
-    bp_destroy(bp);
+    free(bp->frames);
+    free(bp->ref_bits);
+    free(bp->pt_keys);
+    free(bp->pt_vals);
+    memset(bp, 0, sizeof(BufferPool));
     return -1;
   }
 
@@ -232,29 +236,48 @@ int bp_flush_page(BufferPool *bp, page_id_t page_id) {
   }
 
   Page *p = &bp->frames[frame];
-  if (storage_write_page(bp->sm, page_id, p) < 0) {
-    pthread_mutex_unlock(&bp->latch);
-    return -1;
-  }
-
+  p->pin_count++;
   p->is_dirty = false;
   pthread_mutex_unlock(&bp->latch);
-  return 0;
+
+  pthread_rwlock_rdlock(&p->rwlatch);
+  int rc = storage_write_page(bp->sm, page_id, p);
+  pthread_rwlock_unlock(&p->rwlatch);
+
+  pthread_mutex_lock(&bp->latch);
+  p->pin_count--;
+  if (rc != 0) {
+    p->is_dirty = true;
+  }
+  pthread_mutex_unlock(&bp->latch);
+  return rc;
 }
 
 int bp_flush_all(BufferPool *bp) {
   pthread_mutex_lock(&bp->latch);
+  uint32_t count = 0;
+  page_id_t *dirty_ids = malloc(bp->num_frames * sizeof(page_id_t));
+  if (!dirty_ids) {
+    pthread_mutex_unlock(&bp->latch);
+    return -1;
+  }
+
   for (uint32_t i = 0; i < bp->num_frames; i++) {
     if (bp->frames[i].id != INVALID_PAGE_ID && bp->frames[i].is_dirty) {
-      if (storage_write_page(bp->sm, bp->frames[i].id, &bp->frames[i]) < 0) {
-        pthread_mutex_unlock(&bp->latch);
-        return -1;
-      }
-      bp->frames[i].is_dirty = false;
+      dirty_ids[count++] = bp->frames[i].id;
     }
   }
   pthread_mutex_unlock(&bp->latch);
-  return 0;
+
+  int ret = 0;
+  for (uint32_t i = 0; i < count; i++) {
+    if (bp_flush_page(bp, dirty_ids[i]) < 0) {
+      ret = -1;
+    }
+  }
+
+  free(dirty_ids);
+  return ret;
 }
 
 Page *bp_new_page(BufferPool *bp, page_id_t *out) {
