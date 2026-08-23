@@ -95,7 +95,7 @@ static void test_ivf_untrained(void) {
     /* Search should fail before training */
     VecResult results[1];
     uint32_t num;
-    assert(ivf_index_search(&env.idx, vec, 1, results, &num) == -1);
+    assert(ivf_index_search(&env.idx, vec, 1, NULL, NULL, results, &num) == -1);
 
     ivf_env_teardown(&env);
     printf("  PASS: test_ivf_untrained\n");
@@ -194,7 +194,7 @@ static void test_ivf_insert_and_search(void) {
     float query[] = {0.0f, 0.0f, 0.0f};
     VecResult results[5];
     uint32_t num;
-    assert(ivf_index_search(&env.idx, query, 5, results, &num) == 0);
+    assert(ivf_index_search(&env.idx, query, 5, NULL, NULL, results, &num) == 0);
     assert(num == 5);
 
     /* All 5 results should be from cluster 0 (near origin), so
@@ -259,8 +259,8 @@ static void test_ivf_full_probe(void) {
     VecResult ivf_res[5], flat_res[5];
     uint32_t ivf_num, flat_num;
 
-    assert(ivf_index_search(&ivf_env.idx, query, k, ivf_res, &ivf_num) == 0);
-    assert(flat_index_search(&flat, query, k, flat_res, &flat_num) == 0);
+    assert(ivf_index_search(&ivf_env.idx, query, k, NULL, NULL, ivf_res, &ivf_num) == 0);
+    assert(flat_index_search(&flat, query, k, NULL, NULL, flat_res, &flat_num) == 0);
 
     assert(ivf_num == flat_num);
 
@@ -315,7 +315,7 @@ static void test_ivf_cosine(void) {
     float query[] = {1.0f, 0.0f, 0.0f};
     VecResult results[3];
     uint32_t num;
-    assert(ivf_index_search(&env.idx, query, 3, results, &num) == 0);
+    assert(ivf_index_search(&env.idx, query, 3, NULL, NULL, results, &num) == 0);
     assert(num == 3);
 
     /* All top-3 should have small cosine distance (< 0.1) */
@@ -362,7 +362,7 @@ static void test_ivf_inner_product(void) {
     float query[] = {1.0f, 1.0f, 1.0f};
     VecResult results[3];
     uint32_t num;
-    assert(ivf_index_search(&env.idx, query, 3, results, &num) == 0);
+    assert(ivf_index_search(&env.idx, query, 3, NULL, NULL, results, &num) == 0);
     assert(num == 3);
 
     /* All top-3 should be from cluster 1 (large vectors), so distance < -10 */
@@ -414,7 +414,7 @@ static void test_ivf_multipage(void) {
 
     VecResult results[10];
     uint32_t num;
-    assert(ivf_index_search(&env.idx, query, 10, results, &num) == 0);
+    assert(ivf_index_search(&env.idx, query, 10, NULL, NULL, results, &num) == 0);
     assert(num == 10);
 
     /* Results should be sorted */
@@ -458,7 +458,7 @@ static void test_ivf_k_exceeds_total(void) {
     /* Ask for k=10 but only 3 exist */
     VecResult results[10];
     uint32_t num;
-    assert(ivf_index_search(&env.idx, vecs[0], 10, results, &num) == 0);
+    assert(ivf_index_search(&env.idx, vecs[0], 10, NULL, NULL, results, &num) == 0);
     assert(num == 3);
 
     /* First result should be exact match */
@@ -496,7 +496,7 @@ static void test_ivf_delete(void) {
     float q[4] = {2.1, 2.1, 2.1, 2.1};
     VecResult res[3];
     uint32_t n;
-    assert(ivf_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(ivf_index_search(&env.idx, q, 3, NULL, NULL, res, &n) == 0);
     assert(n == 3);
     assert(res[0].page_id == p2 && res[0].slot_index == s2);
 
@@ -506,7 +506,7 @@ static void test_ivf_delete(void) {
     assert(ivf_index_delete(&env.idx, p2, s2) < 0);
 
     /* search after deletion */
-    assert(ivf_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(ivf_index_search(&env.idx, q, 3, NULL, NULL, res, &n) == 0);
     assert(n == 2);
     assert((res[0].page_id != p2) || (res[0].slot_index != s2));
     assert((res[1].page_id != p2) || (res[1].slot_index != s2));

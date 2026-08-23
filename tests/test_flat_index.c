@@ -213,7 +213,7 @@ static void test_flat_insert_and_search(void) {
     float query[] = {0.0f, 0.0f, 0.0f};
     VecResult results[3];
     uint32_t num;
-    assert(flat_index_search(&env.idx, query, 3, results, &num) == 0);
+    assert(flat_index_search(&env.idx, query, 3, NULL, NULL, results, &num) == 0);
     assert(num == 3);
 
     /* Closest should be vec[0] with distance 0 (L2² = 0) */
@@ -251,13 +251,13 @@ static void test_flat_multipage(void) {
     memset(vec, 0, dim * sizeof(float));
     VecResult results[1];
     uint32_t num;
-    assert(flat_index_search(&env.idx, vec, 1, results, &num) == 0);
+    assert(flat_index_search(&env.idx, vec, 1, NULL, NULL, results, &num) == 0);
     assert(num == 1);
     assert(fabsf(results[0].distance) < 1e-6f);
 
     /* Search for vec closest to (5.0, 0, ..., 0) — should be vec[5] */
     vec[0] = 5.0f;
-    assert(flat_index_search(&env.idx, vec, 1, results, &num) == 0);
+    assert(flat_index_search(&env.idx, vec, 1, NULL, NULL, results, &num) == 0);
     assert(num == 1);
     assert(fabsf(results[0].distance) < 1e-6f);
 
@@ -285,7 +285,7 @@ static void test_flat_cosine_metric(void) {
     float query[] = {1.0f, 0.0f, 0.0f};
     VecResult results[3];
     uint32_t num;
-    assert(flat_index_search(&env.idx, query, 3, results, &num) == 0);
+    assert(flat_index_search(&env.idx, query, 3, NULL, NULL, results, &num) == 0);
     assert(num == 3);
 
     /* First result should be exact match (cosine distance ≈ 0) */
@@ -315,7 +315,7 @@ static void test_flat_inner_product(void) {
     float query[] = {1.0f, 0.0f, 0.0f};
     VecResult results[3];
     uint32_t num;
-    assert(flat_index_search(&env.idx, query, 3, results, &num) == 0);
+    assert(flat_index_search(&env.idx, query, 3, NULL, NULL, results, &num) == 0);
     assert(num == 3);
 
     assert(fabsf(results[0].distance - (-5.0f)) < 1e-6f);
@@ -346,7 +346,7 @@ static void test_flat_delete(void) {
     float q[4] = {2.1, 2.1, 2.1, 2.1};
     VecResult res[3];
     uint32_t n;
-    assert(flat_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(flat_index_search(&env.idx, q, 3, NULL, NULL, res, &n) == 0);
     assert(n == 3);
     assert(res[0].page_id == p2 && res[0].slot_index == s2); /* closest */
 
@@ -358,7 +358,7 @@ static void test_flat_delete(void) {
     assert(flat_index_delete(&env.idx, p2, s2) < 0);
 
     /* Search after deletion */
-    assert(flat_index_search(&env.idx, q, 3, res, &n) == 0);
+    assert(flat_index_search(&env.idx, q, 3, NULL, NULL, res, &n) == 0);
     assert(n == 2);
     /* Now v3 or v1 should be returned, but v2 is gone */
     assert((res[0].page_id != p2) || (res[0].slot_index != s2));

@@ -4,7 +4,7 @@
 #include "page.h"
 
 #define PROTO_MAGIC      0xDB1234
-#define SCHEMA_VERSION   3
+#define SCHEMA_VERSION   4
 #define META_PAGE_ID     0
 
 typedef struct {
@@ -15,6 +15,7 @@ typedef struct {
     page_id_t  root_index_pid;
     uint8_t    root_index_type; /* 0=None, 1=Flat, 2=IVF */
     uint8_t    _pad[3];
+    page_id_t  root_meta_store_pid; /* Root page for MetadataStore stream */
 } MetaPageHeader;
 
 typedef struct {

@@ -226,6 +226,7 @@ int ivf_index_delete(IvfIndex *idx, page_id_t pid, uint16_t slot) {
 }
 
 int ivf_index_search(IvfIndex *idx, const float *query, uint32_t k,
+                     vec_filter_fn_t filter_fn, void *filter_arg,
                      VecResult *results, uint32_t *num_results) {
   if (!idx->is_trained) {
     *num_results = 0;
@@ -274,7 +275,7 @@ int ivf_index_search(IvfIndex *idx, const float *query, uint32_t k,
     }
 
     uint32_t part_num = 0;
-    int rc = flat_index_search(part, query, part_k, part_results, &part_num);
+    int rc = flat_index_search(part, query, part_k, filter_fn, filter_arg, part_results, &part_num);
     if (rc < 0) {
       free(part_results);
       vec_topk_destroy(&centroid_tk);

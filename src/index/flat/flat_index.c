@@ -152,6 +152,7 @@ int flat_index_delete(FlatIndex *idx, page_id_t pid, uint16_t slot) {
 }
 
 int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
+                      vec_filter_fn_t filter_fn, void *filter_arg,
                       VecResult *results, uint32_t *num_results) {
     if (k == 0) {
         *num_results = 0;
@@ -176,6 +177,9 @@ int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
         uint16_t count = vec_page_count(p);
         for (uint16_t vi = 0; vi < count; vi++) {
             if (vec_page_is_deleted(p, vi)) {
+                continue;
+            }
+            if (filter_fn && !filter_fn(pid, vi, filter_arg)) {
                 continue;
             }
             const float *vec = vec_page_get(p, vi);
