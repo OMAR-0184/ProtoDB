@@ -18,6 +18,8 @@ typedef struct {
   StorageManager *sm;
   Wal *wal;         /* optional WAL — NULL if disabled */
   pthread_mutex_t latch;
+  uint64_t        hits;
+  uint64_t        misses;
 } BufferPool;
 
 #include <pthread.h>

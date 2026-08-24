@@ -93,6 +93,8 @@ int bp_init(BufferPool *bp, StorageManager *sm, uint32_t num_frames) {
   bp->wal = NULL;
   bp->num_frames = num_frames;
   bp->clock_hand = 0;
+  bp->hits = 0;
+  bp->misses = 0;
 
   uint32_t cap = 1;
   while (cap < num_frames * 2)
@@ -156,12 +158,15 @@ Page *bp_fetch_page(BufferPool *bp, page_id_t page_id) {
 
   int32_t frame = pt_lookup(bp, page_id);
   if (frame >= 0) {
+    bp->hits++;
     bp->frames[frame].pin_count++;
     bp->ref_bits[frame] = true;
     Page *p = &bp->frames[frame];
     pthread_mutex_unlock(&bp->latch);
     return p;
   }
+  
+  bp->misses++;
 
   int32_t victim = -1;
 
