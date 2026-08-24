@@ -73,7 +73,7 @@ static float *make_random_vectors(uint32_t n, uint16_t dim) {
 
 static void bench_page_ops(void) {
     struct timespec _ts_start, _ts_end;
-    emit("\n[1] Page Insert / Get / Delete\n");
+    emit("\n[1] In-Memory Page Operations (No I/O)\n");
     separator();
 
     const int N = 10000;
@@ -164,7 +164,7 @@ static void bench_storage_io(void) {
     for (int i = 0; i < N; i++)
         storage_allocate_page(&sm, &ids[i]);
 
-    /* --- Write --- */
+    /* --- Write (OS Cache) --- */
     Page p;
     BENCH_START();
     for (int i = 0; i < N; i++) {
@@ -174,8 +174,20 @@ static void bench_storage_io(void) {
     BENCH_END();
     double write_ms = BENCH_MS();
     double write_mb = (double)N * PAGE_SIZE / (1024.0 * 1024.0);
-    emit("  Write: %d pages (%.1f MB) in %.2f ms  (%.1f MB/s)\n",
+    emit("  Write (cache): %d pages (%.1f MB) in %.2f ms  (%.1f MB/s)\n",
          N, write_mb, write_ms, write_mb / (write_ms / 1000.0));
+
+    /* --- Write (Fsync) --- */
+    BENCH_START();
+    for (int i = 0; i < N; i++) {
+        page_init(&p, ids[i], PAGE_TYPE_DATA);
+        storage_write_page(&sm, ids[i], &p);
+    }
+    fsync(sm.fd);
+    BENCH_END();
+    double sync_ms = BENCH_MS();
+    emit("  Write (fsync): %d pages (%.1f MB) in %.2f ms  (%.1f MB/s)\n",
+         N, write_mb, sync_ms, write_mb / (sync_ms / 1000.0));
 
     /* --- Sequential read --- */
     BENCH_START();
@@ -216,14 +228,14 @@ static void bench_buffer_pool(void) {
     storage_open(&sm, BENCH_DB);
 
     const uint32_t POOL_SIZE = 64;
-    const int N_PAGES = 256;
-    const int ITERS = 10;
+    const int N_PAGES = 10000;
+    const int ITERS = 2;
 
     BufferPool bp;
     bp_init(&bp, &sm, POOL_SIZE);
 
     /* Create pages */
-    page_id_t ids[256];
+    page_id_t *ids = malloc((size_t)N_PAGES * sizeof(page_id_t));
     for (int i = 0; i < N_PAGES; i++) {
         Page *p = bp_new_page(&bp, &ids[i]);
         bp_unpin_page(&bp, ids[i], true);
@@ -258,10 +270,11 @@ static void bench_buffer_pool(void) {
         }
     }
     /* Approximate: last POOL_SIZE pages should be cached */
-    emit("  Cache ratio: %u/%d (%.0f%% capacity)\n",
+    emit("  Cache ratio: %u/%d (%.1f%% capacity)\n",
          POOL_SIZE, N_PAGES, 100.0 * POOL_SIZE / N_PAGES);
     (void)hits; (void)misses;
 
+    free(ids);
     bp_destroy(&bp);
     storage_close(&sm);
     unlink(BENCH_DB);
@@ -283,7 +296,7 @@ static void bench_flat_index(void) {
     bp_init(&bp, &sm, 256);
 
     uint16_t dim = 128;
-    uint32_t n_vectors = 5000;
+    uint32_t n_vectors = 50000;
     uint32_t k = 10;
     uint32_t n_queries = 100;
 
@@ -313,8 +326,8 @@ static void bench_flat_index(void) {
         flat_index_search(&idx, queries + (size_t)q * dim, k, NULL, NULL, results, &num);
     BENCH_END();
     double search_ms = BENCH_MS();
-    emit("  Search (k=%u): %u queries in %.2f ms  (%.1f ms/query, %.0f QPS)\n",
-         k, n_queries, search_ms, search_ms / n_queries,
+    emit("  Search (k=%u): %u queries in %.2f ms  (%.1f µs/query, %.0f QPS)\n",
+         k, n_queries, search_ms, (search_ms * 1000.0) / n_queries,
          n_queries / (search_ms / 1000.0));
 
     free(vecs);
@@ -342,9 +355,9 @@ static void bench_ivf_index(void) {
     bp_init(&bp, &sm, 512);
 
     uint16_t dim = 128;
-    uint32_t n_vectors = 5000;
-    uint32_t nlist = 32;
-    uint32_t nprobe = 4;
+    uint32_t n_vectors = 50000;
+    uint32_t nlist = 64;
+    uint32_t nprobe = 8;
     uint32_t k = 10;
     uint32_t n_queries = 100;
 
@@ -381,13 +394,41 @@ static void bench_ivf_index(void) {
         ivf_index_search(&idx, queries + (size_t)q * dim, k, NULL, NULL, results, &num);
     BENCH_END();
     double search_ms = BENCH_MS();
-    emit("  Search (k=%u): %u queries in %.2f ms  (%.1f ms/query, %.0f QPS)\n",
-         k, n_queries, search_ms, search_ms / n_queries,
+    emit("  Search (k=%u): %u queries in %.2f ms  (%.1f µs/query, %.0f QPS)\n",
+         k, n_queries, search_ms, (search_ms * 1000.0) / n_queries,
          n_queries / (search_ms / 1000.0));
 
+    /* --- Recall Calculation --- */
+    FlatIndex f_idx;
+    flat_index_create(&f_idx, &bp, dim, VEC_DIST_L2);
+    for (uint32_t i = 0; i < n_vectors; i++)
+        flat_index_insert(&f_idx, vecs + (size_t)i * dim, NULL, NULL);
+
+    uint32_t total_matches = 0;
+    for (uint32_t q = 0; q < n_queries; q++) {
+        VecResult flat_res[10], ivf_res[10];
+        uint32_t f_num, i_num;
+        flat_index_search(&f_idx, queries + (size_t)q * dim, k, NULL, NULL, flat_res, &f_num);
+        ivf_index_search(&idx, queries + (size_t)q * dim, k, NULL, NULL, ivf_res, &i_num);
+
+        /* Count matches (using distance since physical page_ids differ across indexes) */
+        for (uint32_t i = 0; i < i_num; i++) {
+            for (uint32_t j = 0; j < f_num; j++) {
+                if (fabs(ivf_res[i].distance - flat_res[j].distance) < 1e-5f) {
+                    total_matches++;
+                    break;
+                }
+            }
+        }
+    }
+    double recall = 100.0 * (double)total_matches / (double)(n_queries * k);
+
     /* --- Speedup vs flat --- */
+    emit("  Recall@%u: %.1f%%\n", k, recall);
     emit("  Speedup context: nprobe=%u / nlist=%u → scans ~%.0f%% of data\n",
          nprobe, nlist, 100.0 * nprobe / nlist);
+
+    flat_index_destroy(&f_idx);
 
     free(vecs);
     free(queries);
@@ -402,6 +443,15 @@ static void bench_ivf_index(void) {
  *  Benchmark 6: Distance function micro-benchmark
  * ============================================================ */
 
+static float scalar_l2_sq(const float *a, const float *b, uint32_t dim) {
+    float sum = 0.0f;
+    for (uint32_t i = 0; i < dim; i++) {
+        float d = a[i] - b[i];
+        sum += d * d;
+    }
+    return sum;
+}
+
 static void bench_distance_funcs(void) {
     struct timespec _ts_start, _ts_end;
     emit("\n[6] Distance Functions (SIMD micro-benchmark)\n");
@@ -414,33 +464,43 @@ static void bench_distance_funcs(void) {
     float *a = make_random_vectors(1, dim);
     float *b = make_random_vectors(1, dim);
 
-    /* --- L2² --- */
+    /* --- Scalar L2² Baseline --- */
     volatile float sink = 0;
+    BENCH_START();
+    for (uint32_t i = 0; i < n_pairs; i++)
+        sink = scalar_l2_sq(a, b, dim);
+    BENCH_END();
+    double scalar_ms = BENCH_MS();
+    emit("  dim=%u, %u iterations\n", dim, n_pairs);
+    emit("  Scalar L2:  %.2f ms  (%.0f Mops/sec)\n",
+         scalar_ms, n_pairs / (scalar_ms / 1000.0) / 1e6);
+
+    /* --- SIMD L2² --- */
     BENCH_START();
     for (uint32_t i = 0; i < n_pairs; i++)
         sink = vec_l2_distance_sq(a, b, dim);
     BENCH_END();
     double l2_ms = BENCH_MS();
-    emit("  dim=%u, %u iterations\n", dim, n_pairs);
-    emit("  L2²:     %.2f ms  (%.0f Mops/sec)\n",
+    emit("  SIMD L2:    %.2f ms  (%.0f Mops/sec)\n",
          l2_ms, n_pairs / (l2_ms / 1000.0) / 1e6);
+    emit("  SIMD Speedup = %.2f×\n", scalar_ms / l2_ms);
 
-    /* --- Cosine --- */
+    /* --- SIMD Cosine --- */
     BENCH_START();
     for (uint32_t i = 0; i < n_pairs; i++)
         sink = vec_cosine_distance(a, b, dim);
     BENCH_END();
     double cos_ms = BENCH_MS();
-    emit("  Cosine:  %.2f ms  (%.0f Mops/sec)\n",
+    emit("  SIMD Cosine: %.2f ms  (%.0f Mops/sec)\n",
          cos_ms, n_pairs / (cos_ms / 1000.0) / 1e6);
 
-    /* --- Inner product --- */
+    /* --- SIMD Inner product --- */
     BENCH_START();
     for (uint32_t i = 0; i < n_pairs; i++)
         sink = vec_inner_product_distance(a, b, dim);
     BENCH_END();
     double ip_ms = BENCH_MS();
-    emit("  IP:      %.2f ms  (%.0f Mops/sec)\n",
+    emit("  SIMD IP:     %.2f ms  (%.0f Mops/sec)\n",
          ip_ms, n_pairs / (ip_ms / 1000.0) / 1e6);
 
     (void)sink;
