@@ -80,6 +80,8 @@ void flat_index_destroy(FlatIndex *idx) {
 
 int flat_index_insert(FlatIndex *idx, const float *vec,
                       page_id_t *out_pid, uint16_t *out_slot) {
+    if (!vec)
+        return -1;
     if (idx->num_pages == 0)
         return -1;
 
@@ -154,6 +156,8 @@ int flat_index_delete(FlatIndex *idx, page_id_t pid, uint16_t slot) {
 int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
                       vec_filter_fn_t filter_fn, void *filter_arg,
                       VecResult *results, uint32_t *num_results) {
+    if (!query || !results || !num_results)
+        return -1;
     if (k == 0) {
         *num_results = 0;
         return 0;

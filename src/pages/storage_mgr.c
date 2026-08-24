@@ -168,7 +168,6 @@ int storage_allocate_page(StorageManager *sm, page_id_t *out) {
 
         page_id_t next_free;
         memcpy(&next_free, buf + PAGE_DATA_OFFSET, sizeof(page_id_t));
-        sm->meta.free_list_head = next_free;
 
         memset(buf, 0, PAGE_SIZE);
         PageHeader ph = {
@@ -181,6 +180,9 @@ int storage_allocate_page(StorageManager *sm, page_id_t *out) {
         n = pwrite(sm->fd, buf, PAGE_SIZE, offset);
         if (n != PAGE_SIZE)
             return -1;
+
+        /* Only update in-memory state after disk write succeeds */
+        sm->meta.free_list_head = next_free;
 
         if (flush_meta(sm) < 0)
             return -1;
