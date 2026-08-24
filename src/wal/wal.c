@@ -1,12 +1,15 @@
 #include "wal.h"
 #include <fcntl.h>
-#include <unistd.h>
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 /* ---- CRC32 (ISO 3309 / ITU-T V.42) ---- */
+/* Original source of this matrix: Precomputed lookup table for the standard
+ * CRC-32 polynomial 0xEDB88320 (reversed IEEE 802.3).
+ */
 
 static const uint32_t crc32_table[256] = {
     0x00000000, 0x77073096, 0xEE0E612C, 0x990951BA, 0x076DC419, 0x706AF48F,
@@ -55,277 +58,277 @@ static const uint32_t crc32_table[256] = {
 };
 
 uint32_t wal_crc32(const uint8_t *data, size_t len) {
-    uint32_t crc = 0xFFFFFFFF;
-    for (size_t i = 0; i < len; i++) {
-        crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFF];
-    }
-    return crc ^ 0xFFFFFFFF;
+  uint32_t crc = 0xFFFFFFFF;
+  for (size_t i = 0; i < len; i++) {
+    crc = (crc >> 8) ^ crc32_table[(crc ^ data[i]) & 0xFF];
+  }
+  return crc ^ 0xFFFFFFFF;
 }
 
 /* ---- WAL file operations ---- */
 
 static int wal_flush_header(Wal *wal) {
-    WalHeader hdr = {
-        .magic       = WAL_MAGIC,
-        .version     = WAL_VERSION,
-        .num_records = wal->num_records,
-        ._reserved   = 0,
-    };
+  WalHeader hdr = {
+      .magic = WAL_MAGIC,
+      .version = WAL_VERSION,
+      .num_records = wal->num_records,
+      ._reserved = 0,
+  };
 
-    if (pwrite(wal->fd, &hdr, sizeof(WalHeader), 0) != sizeof(WalHeader))
-        return -1;
+  if (pwrite(wal->fd, &hdr, sizeof(WalHeader), 0) != sizeof(WalHeader))
+    return -1;
 
-    return 0;
+  return 0;
 }
 
 static int wal_read_header(Wal *wal, WalHeader *hdr) {
-    if (pread(wal->fd, hdr, sizeof(WalHeader), 0) != sizeof(WalHeader))
-        return -1;
-    return 0;
+  if (pread(wal->fd, hdr, sizeof(WalHeader), 0) != sizeof(WalHeader))
+    return -1;
+  return 0;
 }
 
 int wal_open(Wal *wal, const char *db_path, StorageManager *sm) {
-    memset(wal, 0, sizeof(Wal));
+  memset(wal, 0, sizeof(Wal));
+  wal->fd = -1;
+
+  /* Construct WAL path: <db_path>.wal */
+  size_t path_len = strlen(db_path);
+  if (path_len + 5 >= sizeof(wal->filepath)) {
+    fprintf(stderr, "wal_open: path too long\n");
+    return -1;
+  }
+  snprintf(wal->filepath, sizeof(wal->filepath), "%s.wal", db_path);
+
+  int fd = open(wal->filepath, O_RDWR | O_CREAT, 0644);
+  if (fd < 0) {
+    perror("wal_open");
+    return -1;
+  }
+  wal->fd = fd;
+
+  struct stat st;
+  if (fstat(fd, &st) < 0) {
+    perror("wal_open: fstat");
+    close(fd);
     wal->fd = -1;
+    return -1;
+  }
 
-    /* Construct WAL path: <db_path>.wal */
-    size_t path_len = strlen(db_path);
-    if (path_len + 5 >= sizeof(wal->filepath)) {
-        fprintf(stderr, "wal_open: path too long\n");
-        return -1;
+  if (st.st_size == 0) {
+    /* New WAL file — write initial header */
+    wal->num_records = 0;
+    wal->next_lsn = 1;
+
+    if (wal_flush_header(wal) < 0) {
+      close(fd);
+      wal->fd = -1;
+      return -1;
     }
-    snprintf(wal->filepath, sizeof(wal->filepath), "%s.wal", db_path);
-
-    int fd = open(wal->filepath, O_RDWR | O_CREAT, 0644);
-    if (fd < 0) {
-        perror("wal_open");
-        return -1;
-    }
-    wal->fd = fd;
-
-    struct stat st;
-    if (fstat(fd, &st) < 0) {
-        perror("wal_open: fstat");
+    fsync(fd);
+  } else {
+    /* Existing WAL — read header and attempt recovery */
+    WalHeader hdr;
+    if (wal_read_header(wal, &hdr) < 0 || hdr.magic != WAL_MAGIC) {
+      fprintf(stderr, "wal_open: invalid WAL header, resetting\n");
+      wal->num_records = 0;
+      wal->next_lsn = 1;
+      if (ftruncate(fd, 0) < 0) {
         close(fd);
         wal->fd = -1;
         return -1;
-    }
-
-    if (st.st_size == 0) {
-        /* New WAL file — write initial header */
-        wal->num_records = 0;
-        wal->next_lsn = 1;
-
-        if (wal_flush_header(wal) < 0) {
-            close(fd);
-            wal->fd = -1;
-            return -1;
-        }
-        fsync(fd);
+      }
+      if (wal_flush_header(wal) < 0) {
+        close(fd);
+        wal->fd = -1;
+        return -1;
+      }
+      fsync(fd);
     } else {
-        /* Existing WAL — read header and attempt recovery */
-        WalHeader hdr;
-        if (wal_read_header(wal, &hdr) < 0 || hdr.magic != WAL_MAGIC) {
-            fprintf(stderr, "wal_open: invalid WAL header, resetting\n");
-            wal->num_records = 0;
-            wal->next_lsn = 1;
-            if (ftruncate(fd, 0) < 0) {
-                close(fd);
-                wal->fd = -1;
-                return -1;
-            }
-            if (wal_flush_header(wal) < 0) {
-                close(fd);
-                wal->fd = -1;
-                return -1;
-            }
-            fsync(fd);
-        } else {
-            wal->num_records = hdr.num_records;
-            wal->next_lsn = hdr.num_records + 1;
+      wal->num_records = hdr.num_records;
+      wal->next_lsn = hdr.num_records + 1;
 
-            /* If there are records, run recovery */
-            if (wal->num_records > 0) {
-                if (wal_recover(wal, sm) < 0) {
-                    close(fd);
-                    wal->fd = -1;
-                    return -1;
-                }
-            }
+      /* If there are records, run recovery */
+      if (wal->num_records > 0) {
+        if (wal_recover(wal, sm) < 0) {
+          close(fd);
+          wal->fd = -1;
+          return -1;
         }
+      }
     }
+  }
 
-    return 0;
+  return 0;
 }
 
 int wal_close(Wal *wal) {
-    if (wal->fd < 0)
-        return -1;
+  if (wal->fd < 0)
+    return -1;
 
-    fsync(wal->fd);
-    close(wal->fd);
-    wal->fd = -1;
-    return 0;
+  fsync(wal->fd);
+  close(wal->fd);
+  wal->fd = -1;
+  return 0;
 }
 
 int wal_log_page(Wal *wal, page_id_t page_id, const uint8_t *page_data) {
-    if (wal->fd < 0 || !page_data)
-        return -1;
+  if (wal->fd < 0 || !page_data)
+    return -1;
 
-    WalRecord rec;
-    memset(&rec, 0, sizeof(WalRecord));
-    rec.lsn = wal->next_lsn;
-    rec.page_id = page_id;
-    memcpy(rec.data, page_data, PAGE_SIZE);
-    rec.checksum = wal_crc32(rec.data, PAGE_SIZE);
+  WalRecord rec;
+  memset(&rec, 0, sizeof(WalRecord));
+  rec.lsn = wal->next_lsn;
+  rec.page_id = page_id;
+  memcpy(rec.data, page_data, PAGE_SIZE);
+  rec.checksum = wal_crc32(rec.data, PAGE_SIZE);
 
-    /* Calculate offset: header + existing records */
-    off_t offset = (off_t)sizeof(WalHeader) +
-                   (off_t)wal->num_records * (off_t)sizeof(WalRecord);
+  /* Calculate offset: header + existing records */
+  off_t offset = (off_t)sizeof(WalHeader) +
+                 (off_t)wal->num_records * (off_t)sizeof(WalRecord);
 
-    ssize_t n = pwrite(wal->fd, &rec, sizeof(WalRecord), offset);
-    if (n != (ssize_t)sizeof(WalRecord))
-        return -1;
+  ssize_t n = pwrite(wal->fd, &rec, sizeof(WalRecord), offset);
+  if (n != (ssize_t)sizeof(WalRecord))
+    return -1;
 
-    /* Ensure the record is durable before proceeding */
-    if (fsync(wal->fd) < 0)
-        return -1;
+  /* Ensure the record is durable before proceeding */
+  if (fsync(wal->fd) < 0)
+    return -1;
 
-    wal->num_records++;
-    wal->next_lsn++;
+  wal->num_records++;
+  wal->next_lsn++;
 
-    /* Update the header record count */
-    if (wal_flush_header(wal) < 0)
-        return -1;
+  /* Update the header record count */
+  if (wal_flush_header(wal) < 0)
+    return -1;
 
-    if (fsync(wal->fd) < 0)
-        return -1;
+  if (fsync(wal->fd) < 0)
+    return -1;
 
-    return 0;
+  return 0;
 }
 
 int wal_recover(Wal *wal, StorageManager *sm) {
-    if (wal->fd < 0 || wal->num_records == 0)
-        return 0;
-
-    printf("WAL: recovering %u records...\n", wal->num_records);
-
-    uint32_t applied = 0;
-    uint32_t skipped = 0;
-
-    for (uint32_t i = 0; i < wal->num_records; i++) {
-        WalRecord rec;
-        off_t offset = (off_t)sizeof(WalHeader) +
-                       (off_t)i * (off_t)sizeof(WalRecord);
-
-        ssize_t n = pread(wal->fd, &rec, sizeof(WalRecord), offset);
-        if (n != (ssize_t)sizeof(WalRecord)) {
-            fprintf(stderr, "WAL: truncated record %u, stopping recovery\n", i);
-            break;
-        }
-
-        /* Verify checksum */
-        uint32_t computed_crc = wal_crc32(rec.data, PAGE_SIZE);
-        if (computed_crc != rec.checksum) {
-            fprintf(stderr, "WAL: checksum mismatch on record %u "
-                    "(expected 0x%08X, got 0x%08X), skipping\n",
-                    i, rec.checksum, computed_crc);
-            skipped++;
-            continue;
-        }
-
-        /* Ensure the database is large enough for this page */
-        if (rec.page_id >= sm->meta.page_count) {
-            /* Extend the file */
-            off_t new_size = (off_t)(rec.page_id + 1) * PAGE_SIZE;
-            if (ftruncate(sm->fd, new_size) < 0) {
-                perror("WAL: ftruncate during recovery");
-                return -1;
-            }
-            sm->meta.page_count = rec.page_id + 1;
-        }
-
-        /* Write the page image directly to the database file */
-        Page tmp;
-        memcpy(tmp.data, rec.data, PAGE_SIZE);
-        tmp.id = rec.page_id;
-        if (storage_write_page(sm, rec.page_id, &tmp) < 0) {
-            fprintf(stderr, "WAL: failed to write page %u during recovery\n",
-                    rec.page_id);
-            return -1;
-        }
-
-        applied++;
-    }
-
-    printf("WAL: recovery complete — %u applied, %u skipped\n",
-           applied, skipped);
-
-    /* Checkpoint: truncate the WAL after successful recovery */
-    wal->num_records = 0;
-    wal->next_lsn = applied + skipped + 1;
-
-    if (ftruncate(wal->fd, sizeof(WalHeader)) < 0) {
-        perror("WAL: ftruncate after recovery");
-        return -1;
-    }
-
-    if (wal_flush_header(wal) < 0)
-        return -1;
-
-    fsync(wal->fd);
+  if (wal->fd < 0 || wal->num_records == 0)
     return 0;
+
+  printf("WAL: recovering %u records...\n", wal->num_records);
+
+  uint32_t applied = 0;
+  uint32_t skipped = 0;
+
+  for (uint32_t i = 0; i < wal->num_records; i++) {
+    WalRecord rec;
+    off_t offset =
+        (off_t)sizeof(WalHeader) + (off_t)i * (off_t)sizeof(WalRecord);
+
+    ssize_t n = pread(wal->fd, &rec, sizeof(WalRecord), offset);
+    if (n != (ssize_t)sizeof(WalRecord)) {
+      fprintf(stderr, "WAL: truncated record %u, stopping recovery\n", i);
+      break;
+    }
+
+    /* Verify checksum */
+    uint32_t computed_crc = wal_crc32(rec.data, PAGE_SIZE);
+    if (computed_crc != rec.checksum) {
+      fprintf(stderr,
+              "WAL: checksum mismatch on record %u "
+              "(expected 0x%08X, got 0x%08X), skipping\n",
+              i, rec.checksum, computed_crc);
+      skipped++;
+      continue;
+    }
+
+    /* Ensure the database is large enough for this page */
+    if (rec.page_id >= sm->meta.page_count) {
+      /* Extend the file */
+      off_t new_size = (off_t)(rec.page_id + 1) * PAGE_SIZE;
+      if (ftruncate(sm->fd, new_size) < 0) {
+        perror("WAL: ftruncate during recovery");
+        return -1;
+      }
+      sm->meta.page_count = rec.page_id + 1;
+    }
+
+    /* Write the page image directly to the database file */
+    Page tmp;
+    memcpy(tmp.data, rec.data, PAGE_SIZE);
+    tmp.id = rec.page_id;
+    if (storage_write_page(sm, rec.page_id, &tmp) < 0) {
+      fprintf(stderr, "WAL: failed to write page %u during recovery\n",
+              rec.page_id);
+      return -1;
+    }
+
+    applied++;
+  }
+
+  printf("WAL: recovery complete — %u applied, %u skipped\n", applied, skipped);
+
+  /* Checkpoint: truncate the WAL after successful recovery */
+  wal->num_records = 0;
+  wal->next_lsn = applied + skipped + 1;
+
+  if (ftruncate(wal->fd, sizeof(WalHeader)) < 0) {
+    perror("WAL: ftruncate after recovery");
+    return -1;
+  }
+
+  if (wal_flush_header(wal) < 0)
+    return -1;
+
+  fsync(wal->fd);
+  return 0;
 }
 
 int wal_checkpoint(Wal *wal, StorageManager *sm) {
-    if (wal->fd < 0)
-        return -1;
+  if (wal->fd < 0)
+    return -1;
 
-    if (wal->num_records == 0)
-        return 0;
+  if (wal->num_records == 0)
+    return 0;
 
-    /* Replay all records into the database */
-    for (uint32_t i = 0; i < wal->num_records; i++) {
-        WalRecord rec;
-        off_t offset = (off_t)sizeof(WalHeader) +
-                       (off_t)i * (off_t)sizeof(WalRecord);
+  /* Replay all records into the database */
+  for (uint32_t i = 0; i < wal->num_records; i++) {
+    WalRecord rec;
+    off_t offset =
+        (off_t)sizeof(WalHeader) + (off_t)i * (off_t)sizeof(WalRecord);
 
-        ssize_t n = pread(wal->fd, &rec, sizeof(WalRecord), offset);
-        if (n != (ssize_t)sizeof(WalRecord))
-            return -1;
+    ssize_t n = pread(wal->fd, &rec, sizeof(WalRecord), offset);
+    if (n != (ssize_t)sizeof(WalRecord))
+      return -1;
 
-        uint32_t computed_crc = wal_crc32(rec.data, PAGE_SIZE);
-        if (computed_crc != rec.checksum) {
-            fprintf(stderr, "WAL checkpoint: checksum mismatch on record %u\n", i);
-            return -1;
-        }
-
-        if (rec.page_id >= sm->meta.page_count) {
-            off_t new_size = (off_t)(rec.page_id + 1) * PAGE_SIZE;
-            if (ftruncate(sm->fd, new_size) < 0)
-                return -1;
-            sm->meta.page_count = rec.page_id + 1;
-        }
-
-        Page tmp;
-        memcpy(tmp.data, rec.data, PAGE_SIZE);
-        tmp.id = rec.page_id;
-        if (storage_write_page(sm, rec.page_id, &tmp) < 0)
-            return -1;
+    uint32_t computed_crc = wal_crc32(rec.data, PAGE_SIZE);
+    if (computed_crc != rec.checksum) {
+      fprintf(stderr, "WAL checkpoint: checksum mismatch on record %u\n", i);
+      return -1;
     }
 
-    /* Sync the database file */
-    fsync(sm->fd);
-
-    /* Truncate the WAL */
-    wal->num_records = 0;
-
-    if (ftruncate(wal->fd, sizeof(WalHeader)) < 0)
+    if (rec.page_id >= sm->meta.page_count) {
+      off_t new_size = (off_t)(rec.page_id + 1) * PAGE_SIZE;
+      if (ftruncate(sm->fd, new_size) < 0)
         return -1;
+      sm->meta.page_count = rec.page_id + 1;
+    }
 
-    if (wal_flush_header(wal) < 0)
-        return -1;
+    Page tmp;
+    memcpy(tmp.data, rec.data, PAGE_SIZE);
+    tmp.id = rec.page_id;
+    if (storage_write_page(sm, rec.page_id, &tmp) < 0)
+      return -1;
+  }
 
-    fsync(wal->fd);
-    return 0;
+  /* Sync the database file */
+  fsync(sm->fd);
+
+  /* Truncate the WAL */
+  wal->num_records = 0;
+
+  if (ftruncate(wal->fd, sizeof(WalHeader)) < 0)
+    return -1;
+
+  if (wal_flush_header(wal) < 0)
+    return -1;
+
+  fsync(wal->fd);
+  return 0;
 }
