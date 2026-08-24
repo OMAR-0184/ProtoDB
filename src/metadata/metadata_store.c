@@ -1,5 +1,5 @@
 #include "metadata_store.h"
-#include "../../src/pages/stream_page.h"
+#include "../pages/stream_page.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -67,12 +67,14 @@ int meta_store_set(MetadataStore *ms, page_id_t pid, uint16_t slot, const char *
 }
 
 const char *meta_store_get(const MetadataStore *ms, page_id_t pid, uint16_t slot) {
+    if (!ms) return NULL;
     int idx = find_entry(ms, pid, slot);
     if (idx >= 0) return ms->entries[idx].metadata;
     return NULL;
 }
 
 int meta_store_delete(MetadataStore *ms, page_id_t pid, uint16_t slot) {
+    if (!ms) return -1;
     int idx = find_entry(ms, pid, slot);
     if (idx < 0) return -1;
 
@@ -133,20 +135,12 @@ int meta_store_load(MetadataStore *ms, BufferPool *bp, page_id_t pid) {
     
     if (pid == INVALID_PAGE_ID) return 0;
 
-    /* Read the total count first to know how much to allocate... 
-       Wait, stream_read needs the expected size. 
-       If we don't know the full size, we can't use stream_read directly for the whole buffer easily.
-       Let's read just the count, but stream_read reads the whole stream if we give it a large buffer.
-       Alternatively, we can read the stream into a dynamically resizing buffer.
-       Let's use stream_read_all helper which we can build, or just stream_read with a conservative max size. */
-    
-    /* For simplicity, we can read the full stream length. Wait, how do we get the stream length? 
-       We can get it by iterating over stream pages. */
+    /* Calculate total stream length by traversing linked pages */
     size_t total_bytes = 0;
     page_id_t curr = pid;
     while (curr != INVALID_PAGE_ID) {
         Page *p = bp_fetch_page(bp, curr);
-        if (!p) return -1;
+        if (!p) { meta_store_destroy(ms); return -1; }
         StreamPageHeader *hdr = (StreamPageHeader *)(p->data + STREAM_PAGE_HEADER_OFFSET);
         total_bytes += hdr->data_size;
         curr = hdr->next_page_id;
@@ -154,16 +148,17 @@ int meta_store_load(MetadataStore *ms, BufferPool *bp, page_id_t pid) {
     }
 
     uint8_t *buf = malloc(total_bytes);
-    if (!buf) return -1;
+    if (!buf) { meta_store_destroy(ms); return -1; }
 
     if (stream_read(bp, pid, buf, total_bytes) < 0) {
         free(buf);
+        meta_store_destroy(ms);
         return -1;
     }
 
     uint32_t offset = 0;
     uint32_t count = 0;
-    if (offset + sizeof(uint32_t) > total_bytes) { free(buf); return -1; }
+    if (offset + sizeof(uint32_t) > total_bytes) { free(buf); meta_store_destroy(ms); return -1; }
     memcpy(&count, buf + offset, sizeof(uint32_t));
     offset += sizeof(uint32_t);
 
@@ -172,21 +167,21 @@ int meta_store_load(MetadataStore *ms, BufferPool *bp, page_id_t pid) {
         uint16_t entry_slot;
         uint32_t len;
         
-        if (offset + sizeof(page_id_t) > total_bytes) { free(buf); return -1; }
+        if (offset + sizeof(page_id_t) > total_bytes) { free(buf); meta_store_destroy(ms); return -1; }
         memcpy(&entry_pid, buf + offset, sizeof(page_id_t));
         offset += sizeof(page_id_t);
         
-        if (offset + sizeof(uint16_t) > total_bytes) { free(buf); return -1; }
+        if (offset + sizeof(uint16_t) > total_bytes) { free(buf); meta_store_destroy(ms); return -1; }
         memcpy(&entry_slot, buf + offset, sizeof(uint16_t));
         offset += sizeof(uint16_t);
         
-        if (offset + sizeof(uint32_t) > total_bytes) { free(buf); return -1; }
+        if (offset + sizeof(uint32_t) > total_bytes) { free(buf); meta_store_destroy(ms); return -1; }
         memcpy(&len, buf + offset, sizeof(uint32_t));
         offset += sizeof(uint32_t);
         
-        if (offset + len > total_bytes) { free(buf); return -1; }
+        if (offset + len > total_bytes) { free(buf); meta_store_destroy(ms); return -1; }
         char *meta = malloc(len + 1);
-        if (!meta) { free(buf); return -1; }
+        if (!meta) { free(buf); meta_store_destroy(ms); return -1; }
         
         memcpy(meta, buf + offset, len);
         meta[len] = '\0';
@@ -195,6 +190,7 @@ int meta_store_load(MetadataStore *ms, BufferPool *bp, page_id_t pid) {
         if (meta_store_set(ms, entry_pid, entry_slot, meta) < 0) {
             free(meta);
             free(buf);
+            meta_store_destroy(ms);
             return -1;
         }
         free(meta);

@@ -228,6 +228,8 @@ int ivf_index_delete(IvfIndex *idx, page_id_t pid, uint16_t slot) {
 int ivf_index_search(IvfIndex *idx, const float *query, uint32_t k,
                      vec_filter_fn_t filter_fn, void *filter_arg,
                      VecResult *results, uint32_t *num_results) {
+  if (!query || !results || !num_results)
+    return -1;
   if (!idx->is_trained) {
     *num_results = 0;
     return -1;

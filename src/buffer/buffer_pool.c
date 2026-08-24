@@ -1,4 +1,5 @@
 #include "buffer_pool.h"
+#include "../wal/wal.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -89,6 +90,7 @@ int bp_init(BufferPool *bp, StorageManager *sm, uint32_t num_frames) {
 
   memset(bp, 0, sizeof(BufferPool));
   bp->sm = sm;
+  bp->wal = NULL;
   bp->num_frames = num_frames;
   bp->clock_hand = 0;
 
@@ -179,6 +181,7 @@ Page *bp_fetch_page(BufferPool *bp, page_id_t page_id) {
 
     Page *vp = &bp->frames[victim];
     if (vp->is_dirty) {
+      if (bp->wal) wal_log_page(bp->wal, vp->id, vp->data);
       if (storage_write_page(bp->sm, vp->id, vp) < 0) {
         pthread_mutex_unlock(&bp->latch);
         return NULL;
@@ -241,6 +244,7 @@ int bp_flush_page(BufferPool *bp, page_id_t page_id) {
   pthread_mutex_unlock(&bp->latch);
 
   pthread_rwlock_rdlock(&p->rwlatch);
+  if (bp->wal) wal_log_page(bp->wal, page_id, p->data);
   int rc = storage_write_page(bp->sm, page_id, p);
   pthread_rwlock_unlock(&p->rwlatch);
 
@@ -308,6 +312,7 @@ Page *bp_new_page(BufferPool *bp, page_id_t *out) {
 
     Page *vp = &bp->frames[victim];
     if (vp->is_dirty) {
+      if (bp->wal) wal_log_page(bp->wal, vp->id, vp->data);
       if (storage_write_page(bp->sm, vp->id, vp) < 0) {
         storage_deallocate_page(bp->sm, new_id);
         pthread_mutex_unlock(&bp->latch);

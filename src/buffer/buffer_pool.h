@@ -3,8 +3,7 @@
 
 #include "../pages/page.h"
 #include "../pages/storage_mgr.h"
-
-#include <pthread.h>
+#include "../wal/wal.h"
 
 #define BP_EMPTY_SLOT INVALID_PAGE_ID
 
@@ -17,8 +16,11 @@ typedef struct {
   uint32_t clock_hand;
   uint32_t num_frames;
   StorageManager *sm;
+  Wal *wal;         /* optional WAL — NULL if disabled */
   pthread_mutex_t latch;
 } BufferPool;
+
+#include <pthread.h>
 
 int bp_init(BufferPool *bp, StorageManager *sm, uint32_t num_frames);
 void bp_destroy(BufferPool *bp);

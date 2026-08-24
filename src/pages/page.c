@@ -111,6 +111,9 @@ void page_compact(Page *p) {
 }
 
 int page_update_record(Page *p, uint16_t slot_index, const void *data, uint16_t len) {
+    if (len == 0)
+        return -1;
+
     PageHeader *hdr = page_get_header(p);
     if (slot_index >= hdr->num_slots)
         return -1;

@@ -1,5 +1,2 @@
-build/
-docs/
-tests/
 .DS_Store
-
+build
