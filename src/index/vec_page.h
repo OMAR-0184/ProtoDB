@@ -57,4 +57,14 @@ bool vec_page_is_deleted(const Page *p, uint16_t index);
 /* Dimension of vectors on this page. */
 uint16_t vec_page_dim(const Page *p);
 
+/*
+ * Compact the vector page in-place by removing all tombstoned vectors.
+ * Live vectors are shifted down to fill gaps, and the deleted bitmap
+ * is cleared.  Returns the number of vectors reclaimed.
+ */
+uint16_t vec_page_compact(Page *p);
+
+/* Number of live (non-deleted) vectors on this page. */
+uint16_t vec_page_live_count(const Page *p);
+
 #endif

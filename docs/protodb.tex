@@ -1513,13 +1513,34 @@ The IVF index partitions the vector space into \texttt{nlist} Voronoi cells, eac
 Vectors are assigned to the cell of their nearest centroid. During search, the query is compared against all centroids, and only the vectors in the \texttt{nprobe} closest cells are scanned.
 
 \subsection{Centroid Training}
-Before inserting vectors, the index must be trained. A subset of vectors is used to compute the centroids using K-Means clustering. 
+Before inserting vectors, the index must be trained. A subset of vectors is used to compute the centroids using K-Means clustering (Lloyd's algorithm).
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Decision} & \textbf{Advantage} & \textbf{Disadvantage} \\
+\midrule
+\textbf{Explicit Training Phase} &
+    Centroids perfectly represent the data distribution, leading to balanced partitions. &
+    Requires the user to provide a representative dataset upfront before bulk insertions. \\
+\addlinespace
+Dynamic Clustering &
+    No training phase required; index adapts on the fly. &
+    Massively complex to implement; requires rebalancing partitions continuously. \\
+\bottomrule
+\end{tabularx}
+\caption{Training phase trade-offs}
+\end{table}
 
 \subsection{Partitions}
 Each centroid has an associated partition, which is essentially a dynamically sized array of vector page IDs. Vectors are inserted into the pages of their respective partition. 
 
-\section{Performance}
-By tuning \texttt{nlist} and \texttt{nprobe}, the user trades off recall accuracy for search speed. In our benchmarks, an IVF index with \texttt{nlist=32} and \texttt{nprobe=4} scans only ~12\% of the dataset, increasing search throughput from ~1,300 QPS (Flat) to over ~19,500 QPS on 128-dimensional vectors.
+\section{Performance \& Trade-offs}
+By tuning \texttt{nlist} and \texttt{nprobe}, the user trades off recall accuracy for search speed. In our benchmarks, an IVF index with \texttt{nlist=32} and \texttt{nprobe=4} scans only $\sim$12\% of the dataset, increasing search throughput from $\sim$1,300 QPS (Flat) to over $\sim$19,500 QPS on 128-dimensional vectors.
+
+The crucial tradeoff is that IVF search is \textbf{approximate}. A vector that is technically the nearest neighbor might reside in a partition that wasn't selected by the \texttt{nprobe} check, resulting in a slight drop in recall.
+
 
 % ═════════════════════════════════════════════════════════════════════════════
 %  CHAPTER 6: PERSISTENCE AND STREAM PAGES
@@ -1533,7 +1554,25 @@ Indexes in ProtoDB originally built their metadata (e.g., page ID arrays for Fla
 To serialize dynamically sized arrays (like \texttt{idx->page\_ids}), we introduced \texttt{PAGE\_TYPE\_STREAM}.
 A Stream Page allows storing arbitrary byte streams across multiple linked pages on disk.
 The \texttt{StreamPageHeader} contains a \texttt{next\_page\_id} and \texttt{data\_size}.
-This acts as a linked list of pages, enabling us to serialize index metadata that exceeds the 8KB limit of a single page.
+This acts as a singly linked list of pages, enabling us to serialize index metadata that exceeds the 8 KB limit of a single page.
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Design Choice} & \textbf{Advantage} & \textbf{Disadvantage} \\
+\midrule
+\textbf{Linked Stream Pages} &
+    Extremely simple to implement; perfect for bulk sequential read/write operations like startup/shutdown serialization. &
+    Random access is $O(N)$ due to linked list traversal. \\
+\addlinespace
+B-Tree for Metadata &
+    Fast random access ($O(\log N)$). &
+    Massive overkill for structural metadata that is only ever read/written sequentially. \\
+\bottomrule
+\end{tabularx}
+\caption{Metadata Serialization Strategy}
+\end{table}
 
 \section{Index Serialization}
 Each index type implements a \texttt{save} and \texttt{load} routine:
@@ -1543,6 +1582,80 @@ Each index type implements a \texttt{save} and \texttt{load} routine:
 \end{itemize}
 
 The root page ID of the main index stream is stored in the \texttt{MetaPageHeader} (page 0), allowing ProtoDB to seamlessly rebuild the entire database state upon restart.
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+%  CHAPTER 7: METADATA \& FILTERING
+% ═════════════════════════════════════════════════════════════════════════════
+\chapter{Metadata \& Filtering}
+
+\section{The Need for Context}
+Vectors by themselves are just arrays of floats. In real-world applications, vectors represent documents, images, or products. A user needs to retrieve not just the vector, but its associated ID, tags, or JSON payload. Furthermore, users often need to restrict searches (e.g., "Find the nearest 10 vectors WHERE category = 'document'").
+
+\section{Metadata Store Design}
+We implemented a \texttt{MetadataStore} that maps an auto-incrementing \texttt{seq\_id} (assigned during vector insertion) to a variable-length metadata string (or JSON blob).
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Design Choice} & \textbf{Advantage} & \textbf{Disadvantage} \\
+\midrule
+\textbf{Separate Storage (Ours)} &
+    Vector pages remain dense and fixed-width, maximizing sequential scan speeds and CPU cache locality. &
+    Requires joining vectors with their metadata via \texttt{seq\_id} after a search. \\
+\addlinespace
+Interleaved Data &
+    Metadata and vectors are in the same page, avoiding secondary lookups. &
+    Variable-length metadata ruins the fixed-width property of vector pages, making hardware-accelerated/SIMD scans nearly impossible. \\
+\bottomrule
+\end{tabularx}
+\caption{Metadata Storage Layout}
+\end{table}
+
+We chose \textbf{Separate Storage} to protect the scan performance of the Vector Indexes. The \texttt{MetadataStore} uses the generic Slotted Pages (described in Chapter 2) to store the variable-length payloads, packing them efficiently.
+
+\section{Pre-Filtering vs Post-Filtering}
+During vector search, if a query includes a metadata filter, the system must decide when to apply it.
+We implemented \textbf{Pre-Filtering} inside the inner scan loop of the indices. If a vector's \texttt{seq\_id} fails the metadata filter check, it is skipped \textit{before} calculating the expensive distance metric and pushing to the top-k heap. This guarantees we always return exactly $k$ results, avoiding the common issue in post-filtering where filtering out candidates leaves you with fewer than $k$ final results.
+
+
+% ═════════════════════════════════════════════════════════════════════════════
+%  CHAPTER 8: WRITE-AHEAD LOG (WAL) \& RECOVERY
+% ═════════════════════════════════════════════════════════════════════════════
+\chapter{Write-Ahead Log (WAL) \& Recovery}
+
+\section{Crash Consistency}
+The buffer pool defers disk writes to improve performance. However, if the system crashes (power failure, \texttt{SIGKILL}), any dirty pages in memory are lost. Worse, if a crash occurs \textit{while} a page is being written to disk, the page can be left in a torn/corrupted state.
+
+\section{WAL Architecture}
+To guarantee durability and atomicity, ProtoDB implements a Write-Ahead Log (WAL). Before the buffer pool flushes any dirty page to the main \texttt{.db} file, it \textbf{must} first append the new page state to the WAL.
+
+\begin{table}[h]
+\centering
+\begin{tabularx}{\textwidth}{lXX}
+\toprule
+\textbf{Design Choice} & \textbf{Advantage} & \textbf{Disadvantage} \\
+\midrule
+\textbf{Physical / Full-Page Logging} &
+    Recovery is foolproof (just blind-copy the page back). Immune to torn writes since the WAL contains the entire 8 KB image. &
+    High write amplification (changing 4 bytes logs 8 KB). \\
+\addlinespace
+Logical Logging (Diffs) &
+    Extremely compact WAL files; lower I/O bandwidth. &
+    Complex recovery logic. Susceptible to torn writes in the main DB file requiring secondary mechanisms like double-write buffers. \\
+\bottomrule
+\end{tabularx}
+\caption{WAL Logging Granularity}
+\end{table}
+
+We chose \textbf{Full-Page Logging} (similar to SQLite's WAL or PostgreSQL's Full Page Writes) for its absolute robustness and simplicity. 
+
+\subsection{Checksums \& Corruption Detection}
+Every WAL record is appended with a \textbf{CRC32 checksum}. During crash recovery (\texttt{wal\_open}), the system sequentially reads WAL records. If a power failure occurred mid-write, the CRC32 checksum will mismatch, and the recovery process gracefully ignores the incomplete record, restoring the database to the last successfully committed state.
+
+\subsection{Checkpointing}
+A WAL that grows infinitely is unsustainable. The \texttt{wal\_checkpoint} routine safely flushes all logged pages to the main \texttt{.db} file and then truncates the WAL file to 0 bytes, reclaiming disk space and speeding up future recoveries.
 
 
 \end{document}

@@ -209,6 +209,89 @@ uint32_t flat_index_count(const FlatIndex *idx) {
     return idx->total_vectors;
 }
 
+int flat_index_compact(FlatIndex *idx, uint32_t *reclaimed) {
+    uint32_t total_reclaimed = 0;
+    uint32_t write = 0;
+
+    for (uint32_t i = 0; i < idx->num_pages; i++) {
+        page_id_t pid = idx->page_ids[i];
+        Page *p = bp_fetch_page(idx->bp, pid);
+        if (!p)
+            return -1;
+
+        uint16_t r = vec_page_compact(p);
+        total_reclaimed += r;
+        uint16_t live = vec_page_count(p);
+
+        if (live == 0) {
+            /* Page is empty — deallocate it */
+            bp_unpin_page(idx->bp, pid, true);
+            bp_delete_page(idx->bp, pid);
+            /* Don't copy this page_id to the compacted array */
+        } else {
+            bp_unpin_page(idx->bp, pid, (r > 0));
+            idx->page_ids[write] = pid;
+            write++;
+        }
+    }
+
+    idx->num_pages = write;
+
+    /* Ensure there's always at least one page */
+    if (idx->num_pages == 0) {
+        if (alloc_new_vector_page(idx) < 0)
+            return -1;
+    }
+
+    if (reclaimed)
+        *reclaimed = total_reclaimed;
+    return 0;
+}
+
+int flat_index_insert_batch(FlatIndex *idx, const float *vecs, uint32_t n) {
+    if (!vecs || n == 0)
+        return 0;
+    if (idx->num_pages == 0)
+        return -1;
+
+    uint32_t vec_bytes = (uint32_t)idx->dim * (uint32_t)sizeof(float);
+    page_id_t cur_pid = idx->page_ids[idx->num_pages - 1];
+    Page *cur_page = bp_fetch_page(idx->bp, cur_pid);
+    if (!cur_page)
+        return -1;
+
+    for (uint32_t i = 0; i < n; i++) {
+        const float *vec = (const float *)((const uint8_t *)vecs + (size_t)i * vec_bytes);
+
+        int rc = vec_page_append(cur_page, vec);
+        if (rc == 0) {
+            idx->total_vectors++;
+            continue;
+        }
+
+        /* Current page full — unpin and allocate a new one */
+        bp_unpin_page(idx->bp, cur_pid, true);
+
+        if (alloc_new_vector_page(idx) < 0)
+            return -1;
+
+        cur_pid = idx->page_ids[idx->num_pages - 1];
+        cur_page = bp_fetch_page(idx->bp, cur_pid);
+        if (!cur_page)
+            return -1;
+
+        rc = vec_page_append(cur_page, vec);
+        if (rc < 0) {
+            bp_unpin_page(idx->bp, cur_pid, false);
+            return -1;
+        }
+        idx->total_vectors++;
+    }
+
+    bp_unpin_page(idx->bp, cur_pid, true);
+    return 0;
+}
+
 typedef struct {
     uint16_t dim;
     uint32_t metric;

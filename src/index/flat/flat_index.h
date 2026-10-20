@@ -64,6 +64,21 @@ int flat_index_search(FlatIndex *idx, const float *query, uint32_t k,
 uint32_t flat_index_count(const FlatIndex *idx);
 
 /*
+ * Compact the index by removing tombstoned vectors from all pages.
+ * Pages that become completely empty are deallocated.
+ * Returns the total number of vectors reclaimed, or -1 on error.
+ */
+int flat_index_compact(FlatIndex *idx, uint32_t *reclaimed);
+
+/*
+ * Insert multiple vectors in a single call.
+ * More efficient than repeated single inserts: holds pages pinned across
+ * consecutive insertions, avoiding redundant fetch/unpin cycles.
+ * Returns 0 on success, -1 on failure.
+ */
+int flat_index_insert_batch(FlatIndex *idx, const float *vecs, uint32_t n);
+
+/*
  * Save the FlatIndex metadata and page list to disk via stream pages.
  * Returns 0 on success and sets *out_pid to the starting stream page ID.
  */

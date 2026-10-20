@@ -1,0 +1,52 @@
+╔═══════════════════════════════════════════════════════╗
+║             ProtoDB Benchmark Suite                   ║
+╚═══════════════════════════════════════════════════════╝
+  Timestamp:  2026-08-25 00:04:58
+  Page size:  8192 bytes
+  SIMD:       ARM NEON
+
+[1] In-Memory Page Operations (No I/O)
+─────────────────────────────────────────────────────────
+  Insert: 2270000 total records in 189.30 ms  (11991738 ops/sec)
+  Get:    2270000 total lookups in 5.20 ms  (436286758 ops/sec)
+  Delete+Compact: 10000 cycles in 222.87 ms  (44869 cycles/sec)
+
+[2] Storage I/O (read / write pages)
+─────────────────────────────────────────────────────────
+  Write (cache): 1000 pages (7.8 MB) in 1.81 ms  (4313.9 MB/s)
+  Write (fsync): 1000 pages (7.8 MB) in 4.63 ms  (1687.0 MB/s)
+  Read:  1000 pages (7.8 MB) in 1.25 ms  (6260.0 MB/s)
+  Bulk:  1000 pages (7.8 MB) in 3.19 ms  (2448.3 MB/s)
+
+[3] Buffer Pool (fetch / unpin cycles)
+─────────────────────────────────────────────────────────
+  Pool=64 frames, 10000 pages, 2 iterations
+  Fetch+Unpin: 20000 ops in 28.61 ms  (698983 ops/sec)
+  Cache ratio: 64/10000 (0.6% capacity)
+
+[4] Flat Index (brute-force vector search)
+─────────────────────────────────────────────────────────
+  dim=128, n=50000
+  Insert: 49.97 ms  (1000560 vectors/sec)
+  Search (k=10): 100 queries in 819.48 ms  (8194.8 µs/query, 122 QPS)
+
+[5] IVF Index (approximate vector search)
+─────────────────────────────────────────────────────────
+  dim=128, n=50000, nlist=64, nprobe=8
+  Train: 2411.79 ms
+  Insert: 148.88 ms  (335841 vectors/sec)
+  Search (k=10): 100 queries in 121.30 ms  (1213.0 µs/query, 824 QPS)
+  Recall@10: 37.5%
+  Speedup context: nprobe=8 / nlist=64 → scans ~12% of data
+
+[6] Distance Functions (SIMD micro-benchmark)
+─────────────────────────────────────────────────────────
+  dim=128, 100000 iterations
+  Scalar L2:  9.98 ms  (10 Mops/sec)
+  SIMD L2:    2.62 ms  (38 Mops/sec)
+  SIMD Speedup = 3.82×
+  SIMD Cosine: 3.52 ms  (28 Mops/sec)
+  SIMD IP:     2.36 ms  (42 Mops/sec)
+
+─────────────────────────────────────────────────────────
+Results saved to: bench/results/2026-08-25_00-04-58.txt
