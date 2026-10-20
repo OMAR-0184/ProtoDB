@@ -1,0 +1,68 @@
+╔═══════════════════════════════════════════════════════╗
+║             ProtoDB Benchmark Suite                   ║
+╚═══════════════════════════════════════════════════════╝
+  Timestamp:  2026-08-25 00:25:14
+  Page size:  8192 bytes
+  SIMD:       ARM NEON
+
+[1] In-Memory Page Operations (No I/O)
+─────────────────────────────────────────────────────────
+  Insert: 2270000 total records in 309.17 ms  (7342263 ops/sec)
+  Get:    2270000 total lookups in 14.49 ms  (156648955 ops/sec)
+  Delete+Compact: 10000 cycles in 684.40 ms  (14611 cycles/sec)
+
+[2] Storage I/O (read / write pages)
+─────────────────────────────────────────────────────────
+  Write (cache): 1000 pages (7.8 MB) in 3.19 ms  (2452.1 MB/s)
+  Write (fsync): 1000 pages (7.8 MB) in 8.46 ms  (923.8 MB/s)
+  Read:  1000 pages (7.8 MB) in 1.91 ms  (4086.0 MB/s)
+  Bulk:  1000 pages (7.8 MB) in 5.32 ms  (1469.6 MB/s)
+
+[3] Buffer Pool (fetch / unpin cycles)
+─────────────────────────────────────────────────────────
+  Pool=64 frames, 10000 pages, 2 iterations
+  Fetch+Unpin: 20000 ops in 51.01 ms  (392049 ops/sec)
+  Cache ratio: 64/10000 (0.6% capacity)
+  Stats: 0 hits, 20000 misses (0.00% hit rate)
+
+[4 & 5] Vector DB (1M+ Vectors, Multithreaded)
+─────────────────────────────────────────────────────────
+  dim=128, n=1000000, queries=100, threads=4
+  Generating clustered data...
+  Inserting 1,000,000 vectors into Flat Index...
+  Flat Insert: 26571.19 ms
+
+  --- Flat Index Search ---
+  QPS:  12
+  p50:  319.66 ms/query
+  p95:  364.87 ms/query
+  p99:  647.20 ms/query
+
+  --- IVF Index Setup ---
+  Training IVF on 65536 vectors (nlist=1024)...
+  IVF Train: 31952.79 ms
+  Inserting 1,000,000 vectors into IVF Index...
+  IVF Insert: 170040.64 ms
+
+  --- IVF Trade-off Curve ---
+    nprobe |      QPS | Recall | p50 ms | p95 ms |  Scanned
+  -----------------------------------------------------------------
+         1 |     1201 |   8.7% |   2.85 |   7.30 |     0.1%
+         2 |      784 |  13.1% |   4.50 |   9.46 |     0.2%
+         4 |      354 |  18.4% |  11.25 |  17.62 |     0.4%
+         8 |      244 |  28.2% |  16.18 |  22.31 |     0.8%
+        16 |      131 |  35.8% |  29.37 |  43.79 |     1.6%
+        32 |       87 |  58.6% |  44.58 |  59.42 |     3.1%
+        64 |       51 |  96.0% |  76.19 | 104.84 |     6.2%
+
+[6] Distance Functions (SIMD micro-benchmark)
+─────────────────────────────────────────────────────────
+  dim=128, 100000 iterations
+  Scalar L2:  10.07 ms  (10 Mops/sec)
+  SIMD L2:    2.60 ms  (38 Mops/sec)
+  SIMD Speedup = 3.87×
+  SIMD Cosine: 3.51 ms  (28 Mops/sec)
+  SIMD IP:     2.37 ms  (42 Mops/sec)
+
+─────────────────────────────────────────────────────────
+Results saved to: bench/results/2026-08-25_00-25-14.txt

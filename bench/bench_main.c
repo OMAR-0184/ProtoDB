@@ -89,7 +89,7 @@ static float *make_clustered_vectors(uint32_t n, uint16_t dim, uint32_t num_clus
 
     for (uint32_t c = 0; c < num_clusters; c++) {
         for (uint16_t d = 0; d < dim; d++) {
-            centers[c * dim + d] = ((float)rand() / RAND_MAX) * 2.0f - 1.0f;
+            centers[c * dim + d] = ((float)rand() / (float)RAND_MAX) * 2.0f - 1.0f;
         }
     }
 

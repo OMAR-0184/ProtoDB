@@ -95,3 +95,50 @@ bool vec_page_is_deleted(const Page *p, uint16_t index) {
     
     return (vh->deleted_bitmap[word_idx] & (1ULL << bit_idx)) != 0;
 }
+
+uint16_t vec_page_live_count(const Page *p) {
+    const VecPageHeader *vh = get_vec_header_const(p);
+    uint16_t live = 0;
+    for (uint16_t i = 0; i < vh->num_vectors; i++) {
+        uint16_t word_idx = i / 64;
+        uint16_t bit_idx = i % 64;
+        if (!(vh->deleted_bitmap[word_idx] & (1ULL << bit_idx)))
+            live++;
+    }
+    return live;
+}
+
+uint16_t vec_page_compact(Page *p) {
+    VecPageHeader *vh = get_vec_header(p);
+    uint16_t dim = vh->dim;
+    uint32_t vec_bytes = (uint32_t)dim * (uint32_t)sizeof(float);
+
+    if (vec_bytes == 0 || vh->num_vectors == 0)
+        return 0;
+
+    uint16_t write_idx = 0;
+    uint16_t original_count = vh->num_vectors;
+
+    for (uint16_t read_idx = 0; read_idx < original_count; read_idx++) {
+        uint16_t word_idx = read_idx / 64;
+        uint16_t bit_idx = read_idx % 64;
+
+        if (vh->deleted_bitmap[word_idx] & (1ULL << bit_idx))
+            continue; /* skip deleted */
+
+        if (write_idx != read_idx) {
+            uint32_t dst_off = VEC_DATA_OFFSET + (uint32_t)write_idx * vec_bytes;
+            uint32_t src_off = VEC_DATA_OFFSET + (uint32_t)read_idx * vec_bytes;
+            memmove(p->data + dst_off, p->data + src_off, vec_bytes);
+        }
+        write_idx++;
+    }
+
+    uint16_t reclaimed = original_count - write_idx;
+
+    vh->num_vectors = write_idx;
+    memset(vh->deleted_bitmap, 0, sizeof(vh->deleted_bitmap));
+
+    return reclaimed;
+}
+

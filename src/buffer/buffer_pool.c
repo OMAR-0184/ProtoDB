@@ -133,8 +133,11 @@ int bp_init(BufferPool *bp, StorageManager *sm, uint32_t num_frames) {
 void bp_destroy(BufferPool *bp) {
   if (bp->frames && bp->sm) {
     for (uint32_t i = 0; i < bp->num_frames; i++) {
-      if (bp->frames[i].is_dirty && bp->frames[i].id != INVALID_PAGE_ID)
+      if (bp->frames[i].is_dirty && bp->frames[i].id != INVALID_PAGE_ID) {
+        if (bp->wal)
+          wal_log_page(bp->wal, bp->frames[i].id, bp->frames[i].data);
         storage_write_page(bp->sm, bp->frames[i].id, &bp->frames[i]);
+      }
     }
   }
 

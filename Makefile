@@ -98,9 +98,13 @@ $(BUILDDIR)/test_metadata: $(TESTDIR)/test_metadata.c $(OBJS)
 $(BUILDDIR)/test_wal: $(TESTDIR)/test_wal.c $(OBJS)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
 
+$(BUILDDIR)/test_gaps: $(TESTDIR)/test_gaps.c $(OBJS)
+	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
+
 TEST_BINS = $(BUILDDIR)/test_pages $(BUILDDIR)/test_storage $(BUILDDIR)/test_storage_bulk \
             $(BUILDDIR)/test_buffer_pool $(BUILDDIR)/test_flat_index $(BUILDDIR)/test_ivf_index \
-            $(BUILDDIR)/test_persistence $(BUILDDIR)/test_metadata $(BUILDDIR)/test_wal
+            $(BUILDDIR)/test_persistence $(BUILDDIR)/test_metadata $(BUILDDIR)/test_wal \
+            $(BUILDDIR)/test_gaps
 
 test: $(TEST_BINS)
 	@echo ""
@@ -113,6 +117,7 @@ test: $(TEST_BINS)
 	@$(BUILDDIR)/test_persistence
 	@$(BUILDDIR)/test_metadata
 	@$(BUILDDIR)/test_wal
+	@$(BUILDDIR)/test_gaps
 
 bench: $(OBJS) bench/bench_main.c
 	@mkdir -p bench/results

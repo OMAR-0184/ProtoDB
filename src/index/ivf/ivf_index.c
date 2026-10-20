@@ -309,6 +309,86 @@ uint32_t ivf_index_count(const IvfIndex *idx) { return idx->total_vectors; }
 
 bool ivf_index_is_trained(const IvfIndex *idx) { return idx->is_trained; }
 
+int ivf_index_compact(IvfIndex *idx, uint32_t *reclaimed) {
+    if (!idx->is_trained) return -1;
+
+    uint32_t total = 0;
+    for (uint32_t i = 0; i < idx->nlist; i++) {
+        uint32_t part_reclaimed = 0;
+        if (flat_index_compact(&idx->partitions[i], &part_reclaimed) < 0)
+            return -1;
+        total += part_reclaimed;
+    }
+
+    if (reclaimed)
+        *reclaimed = total;
+    return 0;
+}
+
+int ivf_index_insert_batch(IvfIndex *idx, const float *vecs, uint32_t n) {
+    if (!idx->is_trained) return -1;
+    if (!vecs || n == 0) return 0;
+
+    vec_dist_fn_t dist_fn = vec_get_distance_fn(idx->metric);
+    size_t vec_bytes = (size_t)idx->dim * sizeof(float);
+
+    /*
+     * Assign each vector to its nearest centroid, then batch-insert
+     * per partition.  We build an assignment array to avoid sorting
+     * the input vectors themselves.
+     */
+    uint32_t *assignments = malloc(n * sizeof(uint32_t));
+    uint32_t *part_counts = calloc(idx->nlist, sizeof(uint32_t));
+    if (!assignments || !part_counts) {
+        free(assignments);
+        free(part_counts);
+        return -1;
+    }
+
+    for (uint32_t i = 0; i < n; i++) {
+        const float *v = (const float *)((const uint8_t *)vecs + i * vec_bytes);
+        assignments[i] = find_nearest_centroid(v, idx->centroids,
+                                                idx->nlist, idx->dim, dist_fn);
+        part_counts[assignments[i]]++;
+    }
+
+    /* Build per-partition vector buffers */
+    for (uint32_t c = 0; c < idx->nlist; c++) {
+        if (part_counts[c] == 0) continue;
+
+        float *pbuf = malloc(part_counts[c] * vec_bytes);
+        if (!pbuf) {
+            free(assignments);
+            free(part_counts);
+            return -1;
+        }
+
+        uint32_t fill = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            if (assignments[i] == c) {
+                memcpy(pbuf + (size_t)fill * idx->dim,
+                       (const uint8_t *)vecs + i * vec_bytes,
+                       vec_bytes);
+                fill++;
+            }
+        }
+
+        int rc = flat_index_insert_batch(&idx->partitions[c], pbuf, fill);
+        idx->total_vectors += fill;
+        free(pbuf);
+
+        if (rc < 0) {
+            free(assignments);
+            free(part_counts);
+            return -1;
+        }
+    }
+
+    free(assignments);
+    free(part_counts);
+    return 0;
+}
+
 typedef struct {
     uint16_t dim;
     uint32_t metric;

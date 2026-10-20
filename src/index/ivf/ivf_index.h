@@ -70,6 +70,20 @@ uint32_t ivf_index_count(const IvfIndex *idx);
 bool ivf_index_is_trained(const IvfIndex *idx);
 
 /*
+ * Compact all partitions by removing tombstoned vectors.
+ * Empty pages within each partition are deallocated.
+ * Returns 0 on success and sets *reclaimed to the total vectors reclaimed.
+ */
+int ivf_index_compact(IvfIndex *idx, uint32_t *reclaimed);
+
+/*
+ * Insert multiple vectors in a single call.
+ * Groups vectors by nearest centroid, then batch-inserts into each partition.
+ * Returns 0 on success, -1 on failure or if untrained.
+ */
+int ivf_index_insert_batch(IvfIndex *idx, const float *vecs, uint32_t n);
+
+/*
  * Save the IvfIndex metadata, centroids, and partitions to disk.
  * Returns 0 on success and sets *out_pid to the starting stream page ID.
  */
