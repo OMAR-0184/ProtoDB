@@ -14,13 +14,17 @@ VEC_TOPK_SRC   = src/index/vec_topk.c
 VEC_PAGE_SRC   = src/index/vec_page.c
 FLAT_INDEX_SRC = src/index/flat/flat_index.c
 IVF_INDEX_SRC  = src/index/ivf/ivf_index.c
+HNSW_INDEX_SRC = src/index/hnsw/hnsw_index.c
+QUANTIZE_SRC   = src/index/quantize/vec_quantize.c
+IVF_DYN_SRC    = src/index/ivf/ivf_dynamic.c
 META_STORE_SRC = src/metadata/metadata_store.c
 WAL_SRC        = src/wal/wal.c
 
 OBJS = $(BUILDDIR)/page.o $(BUILDDIR)/storage_mgr.o $(BUILDDIR)/stream_page.o $(BUILDDIR)/buffer_pool.o \
        $(BUILDDIR)/vec_utils.o $(BUILDDIR)/vec_topk.o $(BUILDDIR)/vec_page.o \
-       $(BUILDDIR)/flat_index.o $(BUILDDIR)/ivf_index.o $(BUILDDIR)/metadata_store.o \
-       $(BUILDDIR)/wal.o
+       $(BUILDDIR)/flat_index.o $(BUILDDIR)/ivf_index.o $(BUILDDIR)/hnsw_index.o \
+       $(BUILDDIR)/vec_quantize.o $(BUILDDIR)/ivf_dynamic.o \
+       $(BUILDDIR)/metadata_store.o $(BUILDDIR)/wal.o
 
 .PHONY: all clean test bench
 
@@ -62,6 +66,18 @@ $(BUILDDIR)/ivf_index.o: $(IVF_INDEX_SRC) src/index/ivf/ivf_index.h src/index/fl
 	@mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
+$(BUILDDIR)/hnsw_index.o: $(HNSW_INDEX_SRC) src/index/hnsw/hnsw_index.h src/index/vec_page.h src/index/vec_utils.h src/index/vec_topk.h src/buffer/buffer_pool.h src/pages/stream_page.h
+	@mkdir -p $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/vec_quantize.o: $(QUANTIZE_SRC) src/index/quantize/vec_quantize.h src/index/vec_utils.h
+	@mkdir -p $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILDDIR)/ivf_dynamic.o: $(IVF_DYN_SRC) src/index/ivf/ivf_dynamic.h src/index/ivf/ivf_index.h src/index/flat/flat_index.h src/index/vec_page.h src/index/vec_utils.h
+	@mkdir -p $(BUILDDIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
 $(BUILDDIR)/metadata_store.o: $(META_STORE_SRC) src/metadata/metadata_store.h src/pages/page.h src/buffer/buffer_pool.h
 	@mkdir -p $(BUILDDIR)
 	$(CC) $(CFLAGS) -c $< -o $@
@@ -89,6 +105,15 @@ $(BUILDDIR)/test_flat_index: $(TESTDIR)/test_flat_index.c $(OBJS)
 $(BUILDDIR)/test_ivf_index: $(TESTDIR)/test_ivf_index.c $(OBJS)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
 
+$(BUILDDIR)/test_hnsw_index: $(TESTDIR)/test_hnsw_index.c $(OBJS)
+	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
+
+$(BUILDDIR)/test_vec_quantize: $(TESTDIR)/test_vec_quantize.c $(OBJS)
+	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
+
+$(BUILDDIR)/test_ivf_dynamic: $(TESTDIR)/test_ivf_dynamic.c $(OBJS)
+	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
+
 $(BUILDDIR)/test_persistence: $(TESTDIR)/test_persistence.c $(OBJS)
 	$(CC) $(CFLAGS) $< $(OBJS) -o $@ $(LDFLAGS)
 
@@ -103,6 +128,7 @@ $(BUILDDIR)/test_gaps: $(TESTDIR)/test_gaps.c $(OBJS)
 
 TEST_BINS = $(BUILDDIR)/test_pages $(BUILDDIR)/test_storage $(BUILDDIR)/test_storage_bulk \
             $(BUILDDIR)/test_buffer_pool $(BUILDDIR)/test_flat_index $(BUILDDIR)/test_ivf_index \
+            $(BUILDDIR)/test_hnsw_index $(BUILDDIR)/test_vec_quantize $(BUILDDIR)/test_ivf_dynamic \
             $(BUILDDIR)/test_persistence $(BUILDDIR)/test_metadata $(BUILDDIR)/test_wal \
             $(BUILDDIR)/test_gaps
 
@@ -114,6 +140,9 @@ test: $(TEST_BINS)
 	@$(BUILDDIR)/test_buffer_pool
 	@$(BUILDDIR)/test_flat_index
 	@$(BUILDDIR)/test_ivf_index
+	@$(BUILDDIR)/test_hnsw_index
+	@$(BUILDDIR)/test_vec_quantize
+	@$(BUILDDIR)/test_ivf_dynamic
 	@$(BUILDDIR)/test_persistence
 	@$(BUILDDIR)/test_metadata
 	@$(BUILDDIR)/test_wal
